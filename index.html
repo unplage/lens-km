@@ -3,1189 +3,1513 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>文档扫描仪 - 模拟Lens</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(self)">
+    <title>Lens Scanner Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
         * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
         
         body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background: #1a1a1a;
-            color: #fff;
-            height: 100vh;
-            overflow: hidden;
-            position: relative;
-        }
-        
-        /* 主容器 */
-        .container {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        
-        /* 头部 */
-        .header {
-            padding: 12px 16px;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(10px);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            z-index: 100;
-            position: relative;
-        }
-        
-        .logo {
-            font-weight: 700;
-            font-size: 20px;
-            color: #4a8cff;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .logo i {
-            font-size: 22px;
-        }
-        
-        .action-buttons {
-            display: flex;
-            gap: 12px;
-        }
-        
-        .icon-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            color: white;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .icon-btn:active {
-            transform: scale(0.95);
-            background: rgba(255, 255, 255, 0.2);
-        }
-        
-        /* 相机视图 */
-        .camera-container {
-            flex: 1;
-            position: relative;
-            overflow: hidden;
+            font-family: 'Inter', sans-serif;
             background: #000;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
         }
         
-        #videoElement {
+        .camera-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            z-index: 10;
+        }
+        
+        #video {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            transform: scaleX(1);
+            display: none;
         }
         
-        .camera-overlay {
+        #video.active {
+            display: block;
+        }
+        
+        .scan-overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             pointer-events: none;
+            z-index: 20;
+            display: none;
         }
         
-        .document-outline {
+        .scan-overlay.active {
+            display: block;
+        }
+        
+        .corner-marker {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 85%;
-            height: 70%;
-            border: 2px dashed #4a8cff;
-            border-radius: 8px;
-            box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.5);
+            width: 40px;
+            height: 40px;
+            border: 3px solid #00ff88;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(0,255,136,0.5);
         }
         
-        .corner {
+        .corner-tl { top: 20%; left: 10%; border-right: none; border-bottom: none; }
+        .corner-tr { top: 20%; right: 10%; border-left: none; border-bottom: none; }
+        .corner-bl { bottom: 20%; left: 10%; border-right: none; border-top: none; }
+        .corner-br { bottom: 20%; right: 10%; border-left: none; border-top: none; }
+        
+        .scan-line {
             position: absolute;
-            width: 24px;
-            height: 24px;
-            border: 2px solid #4a8cff;
-            background: rgba(0, 0, 0, 0.5);
+            top: 20%;
+            left: 10%;
+            right: 10%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ff88, transparent);
+            animation: scan 2s linear infinite;
+            opacity: 0.6;
         }
         
-        .corner-tl {
-            top: -2px;
-            left: -2px;
-            border-right: none;
-            border-bottom: none;
-            border-radius: 8px 0 0 0;
+        @keyframes scan {
+            0% { top: 20%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 80%; opacity: 0; }
         }
         
-        .corner-tr {
-            top: -2px;
-            right: -2px;
-            border-left: none;
-            border-bottom: none;
-            border-radius: 0 8px 0 0;
-        }
-        
-        .corner-bl {
-            bottom: -2px;
-            left: -2px;
-            border-right: none;
-            border-top: none;
-            border-radius: 0 0 0 8px;
-        }
-        
-        .corner-br {
-            bottom: -2px;
-            right: -2px;
-            border-left: none;
-            border-top: none;
-            border-radius: 0 0 8px 0;
-        }
-        
-        /* 拍照按钮 */
-        .capture-controls {
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(10px);
-        }
-        
-        .capture-btn {
-            width: 70px;
-            height: 70px;
+        .shutter-btn {
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
             background: white;
-            border: 5px solid rgba(255, 255, 255, 0.3);
+            border: 4px solid rgba(255,255,255,0.3);
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
             cursor: pointer;
+            transition: all 0.1s;
+            z-index: 30;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
         
-        .capture-btn:active {
-            transform: scale(0.95);
-            background: #f0f0f0;
+        .shutter-btn:active {
+            transform: translateX(-50%) scale(0.9);
+            background: #ddd;
         }
         
-        .capture-inner {
+        .shutter-inner {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid #333;
+        }
+        
+        .mode-selector {
+            position: absolute;
+            bottom: 140px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 30;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 16px;
+            border-radius: 25px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .mode-btn {
+            color: rgba(255,255,255,0.6);
+            font-size: 12px;
+            font-weight: 500;
+            padding: 6px 12px;
+            border-radius: 15px;
+            transition: all 0.3s;
+            cursor: pointer;
+            white-space: nowrap;
+            user-select: none;
+        }
+        
+        .mode-btn.active {
+            color: #00ff88;
+            background: rgba(0,255,136,0.2);
+        }
+        
+        .gallery-btn {
+            position: absolute;
+            bottom: 50px;
+            right: 30px;
             width: 50px;
             height: 50px;
-            border-radius: 50%;
-            background: white;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-        }
-        
-        /* 侧边栏 - 扫描文档列表 */
-        .sidebar {
-            position: absolute;
-            top: 0;
-            right: -320px;
-            width: 320px;
-            height: 100%;
-            background: rgba(30, 30, 30, 0.95);
-            backdrop-filter: blur(10px);
-            padding: 16px;
-            overflow-y: auto;
-            transition: right 0.3s ease;
-            z-index: 200;
-            box-shadow: -5px 0 15px rgba(0, 0, 0, 0.3);
-        }
-        
-        .sidebar.open {
-            right: 0;
-        }
-        
-        .sidebar-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-        
-        .sidebar-title {
-            font-size: 18px;
-            font-weight: 600;
-        }
-        
-        .close-sidebar {
-            background: none;
-            border: none;
-            color: #fff;
-            font-size: 20px;
-            cursor: pointer;
-        }
-        
-        .scans-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        
-        .scan-item {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            overflow: hidden;
-            position: relative;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .scan-item:active {
-            transform: scale(0.98);
-        }
-        
-        .scan-item.selected {
-            border: 2px solid #4a8cff;
-        }
-        
-        .scan-thumbnail {
-            width: 100%;
-            height: 120px;
-            object-fit: cover;
-        }
-        
-        .scan-info {
-            padding: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .scan-page-number {
-            font-weight: 600;
-            color: #4a8cff;
-        }
-        
-        .scan-actions {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .scan-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            color: white;
-            width: 32px;
-            height: 32px;
-            border-radius: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
+            color: white;
+            z-index: 30;
             cursor: pointer;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.3);
+            transition: transform 0.2s;
         }
         
-        /* PDF 操作栏 */
-        .pdf-actions {
-            padding: 16px;
+        .gallery-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .gallery-count {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #00ff88;
+            color: black;
+            font-size: 11px;
+            font-weight: bold;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
             display: flex;
-            gap: 12px;
-            background: rgba(0, 0, 0, 0.8);
-            margin-top: auto;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid #000;
+        }
+        
+        .preview-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #1a1a1a;
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+        }
+        
+        .preview-container.active {
+            display: flex;
+        }
+        
+        .preview-header {
+            padding: 15px 20px;
+            background: #000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+            flex-shrink: 0;
+        }
+        
+        .preview-canvas-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: auto;
+            background: #0a0a0a;
+            position: relative;
+        }
+        
+        #previewCanvas {
+            max-width: 100%;
+            max-height: 100%;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        
+        .filter-bar {
+            padding: 15px;
+            background: #1a1a1a;
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            border-top: 1px solid #333;
+            flex-shrink: 0;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .filter-btn {
+            min-width: 70px;
+            padding: 10px;
+            background: #2a2a2a;
+            border: 2px solid transparent;
+            border-radius: 12px;
+            color: white;
+            font-size: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        
+        .filter-btn.active {
+            border-color: #00ff88;
+            background: #333;
+        }
+        
+        .filter-icon {
+            width: 30px;
+            height: 30px;
+            margin: 0 auto 5px;
+            background: #444;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        .action-bar {
+            padding: 20px;
+            background: #000;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-shrink: 0;
         }
         
         .action-btn {
             flex: 1;
-            padding: 14px;
-            border-radius: 10px;
-            border: none;
+            max-width: 150px;
+            padding: 15px;
+            border-radius: 12px;
             font-weight: 600;
-            font-size: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
             cursor: pointer;
             transition: all 0.2s;
+            border: none;
+            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
         }
         
-        .action-btn:active {
-            transform: scale(0.98);
-        }
-        
-        .save-pdf {
-            background: #4a8cff;
+        .btn-secondary {
+            background: #333;
             color: white;
         }
         
-        .clear-all {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
+        .btn-primary {
+            background: #00ff88;
+            color: black;
         }
         
-        /* 编辑模式 - 重新设计为底部操作栏 */
-        .edit-mode {
-            position: absolute;
+        .gallery-modal {
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             background: #000;
-            z-index: 300;
+            z-index: 60;
             display: none;
             flex-direction: column;
         }
         
-        .edit-header {
-            padding: 16px;
-            background: rgba(0, 0, 0, 0.8);
+        .gallery-modal.active {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            backdrop-filter: blur(10px);
         }
         
-        .edit-title {
-            font-weight: 600;
-            font-size: 18px;
-        }
-        
-        .edit-canvas-container {
+        .gallery-grid {
             flex: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2px;
+            padding: 2px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .gallery-item {
+            aspect-ratio: 3/4;
+            background: #1a1a1a;
+            position: relative;
+            cursor: pointer;
+            overflow: hidden;
+        }
+        
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .gallery-item.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 24px;
+            height: 24px;
+            background: #00ff88;
+            color: black;
+            border-radius: 50%;
             display: flex;
-            justify-content: center;
             align-items: center;
-            overflow: auto;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .gallery-actions {
             padding: 20px;
-        }
-        
-        #editCanvas {
-            max-width: 100%;
-            max-height: 100%;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
-        }
-        
-        .edit-footer {
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(10px);
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        
-        .edit-tools {
+            background: #1a1a1a;
             display: flex;
             gap: 10px;
-            overflow-x: auto;
-            padding: 10px 0;
-            justify-content: center;
+            border-top: 1px solid #333;
+            flex-shrink: 0;
         }
         
-        .tool-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            color: white;
-            padding: 12px 18px;
-            border-radius: 25px;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            white-space: nowrap;
-            cursor: pointer;
-            min-width: 80px;
-            justify-content: center;
-        }
-        
-        .tool-btn.active {
-            background: #4a8cff;
-            color: white;
-        }
-        
-        .edit-actions {
-            display: flex;
-            gap: 12px;
-        }
-        
-        .edit-action-btn {
-            flex: 1;
-            padding: 16px;
-            border-radius: 10px;
-            border: none;
-            font-weight: 600;
-            font-size: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .edit-action-btn:active {
-            transform: scale(0.98);
-        }
-        
-        .save-edit {
-            background: #4a8cff;
-            color: white;
-        }
-        
-        .cancel-edit {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-        }
-        
-        /* 加载动画 */
-        .loading {
-            position: absolute;
+        .processing-overlay {
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
+            background: rgba(0,0,0,0.95);
+            z-index: 100;
             display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        
+        .processing-overlay.active {
+            display: flex;
         }
         
         .spinner {
             width: 50px;
             height: 50px;
-            border: 5px solid rgba(255, 255, 255, 0.2);
-            border-top: 5px solid #4a8cff;
+            border: 3px solid #333;
+            border-top-color: #00ff88;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-bottom: 20px;
         }
         
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            to { transform: rotate(360deg); }
         }
         
-        /* 提示信息 */
-        .hint {
+        .crop-frame {
             position: absolute;
-            bottom: 120px;
-            left: 0;
-            width: 100%;
-            text-align: center;
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 14px;
-            padding: 0 20px;
+            border: 2px solid #00ff88;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.8);
+            display: none;
             pointer-events: none;
         }
         
-        /* PDF提示 */
-        .pdf-hint {
+        .crop-frame.active {
+            display: block;
+        }
+        
+        .crop-handle {
             position: absolute;
-            top: 100px;
+            width: 30px;
+            height: 30px;
+            background: #00ff88;
+            border-radius: 50%;
+            cursor: move;
+            z-index: 10;
+            border: 3px solid white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            pointer-events: auto;
+        }
+        
+        .flash-overlay {
+            position: fixed;
+            top: 0;
             left: 0;
             width: 100%;
-            text-align: center;
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 14px;
-            padding: 0 20px;
+            height: 100%;
+            background: white;
+            opacity: 0;
             pointer-events: none;
+            z-index: 40;
+            transition: opacity 0.1s;
         }
         
-        /* 响应式调整 */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                right: -100%;
-            }
-            
-            .document-outline {
-                width: 90%;
-                height: 60%;
-            }
-            
-            .tool-btn {
-                padding: 10px 14px;
-                min-width: 70px;
-                font-size: 13px;
-            }
+        .flash-overlay.active {
+            opacity: 1;
         }
         
-        @media (max-height: 700px) {
-            .document-outline {
-                height: 60%;
-            }
-            
-            .hint {
-                bottom: 110px;
-            }
+        .hidden-canvas {
+            display: none;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 14px;
+            z-index: 200;
+            opacity: 0;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+            max-width: 80%;
+            text-align: center;
+        }
+        
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+        
+        .error-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 300;
+            display: none;
+            max-width: 80%;
+            border: 1px solid #333;
+        }
+        
+        .error-message.active {
+            display: block;
+        }
+        
+        .permission-btn {
+            background: #00ff88;
+            color: black;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-weight: 600;
+            margin-top: 15px;
+            cursor: pointer;
+        }
+        
+        .zoom-controls {
+            position: absolute;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 30;
+        }
+        
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            color: white;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .zoom-btn.active {
+            background: #00ff88;
+            color: black;
+            border-color: #00ff88;
+        }
+        
+        .upload-btn {
+            position: absolute;
+            bottom: 50px;
+            left: 30px;
+            width: 50px;
+            height: 50px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            z-index: 30;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        #fileInput {
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- 头部 -->
-        <div class="header">
-            <div class="logo">
-                <i class="fas fa-camera"></i>
-                <span>文档扫描仪</span>
-            </div>
-            <div class="action-buttons">
-                <button class="icon-btn" id="toggleSidebar">
-                    <i class="fas fa-images"></i>
-                </button>
-                <button class="icon-btn" id="toggleFlash">
-                    <i class="fas fa-bolt"></i>
-                </button>
-            </div>
+
+    <!-- 相机界面 -->
+    <div class="camera-container" id="cameraContainer">
+        <video id="video" autoplay playsinline muted></video>
+        
+        <!-- 扫描动画覆盖层 -->
+        <div class="scan-overlay" id="scanOverlay">
+            <div class="corner-marker corner-tl"></div>
+            <div class="corner-marker corner-tr"></div>
+            <div class="corner-marker corner-bl"></div>
+            <div class="corner-marker corner-br"></div>
+            <div class="scan-line"></div>
         </div>
         
-        <!-- 相机视图 -->
-        <div class="camera-container">
-            <video id="videoElement" autoplay playsinline></video>
-            <div class="camera-overlay">
-                <div class="document-outline">
-                    <div class="corner corner-tl"></div>
-                    <div class="corner corner-tr"></div>
-                    <div class="corner corner-bl"></div>
-                    <div class="corner corner-br"></div>
-                </div>
-            </div>
-            <div class="hint">将文档置于框内，确保光线充足</div>
-            <div class="pdf-hint" id="pdfHint" style="display: none;">
-                拍摄后点击底部"生成PDF"按钮导出文档合集
-            </div>
-        </div>
-        
-        <!-- 拍照控制 -->
-        <div class="capture-controls">
-            <div class="capture-btn" id="captureBtn">
-                <div class="capture-inner"></div>
-            </div>
-        </div>
-        
-        <!-- PDF 操作栏 -->
-        <div class="pdf-actions">
-            <button class="action-btn save-pdf" id="savePdf">
-                <i class="fas fa-file-pdf"></i>
-                <span>生成PDF</span>
+        <!-- 顶部控制栏 -->
+        <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-30 bg-gradient-to-b from-black/70 to-transparent">
+            <button onclick="toggleFlash()" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
             </button>
-            <button class="action-btn clear-all" id="clearAll">
-                <i class="fas fa-trash"></i>
-                <span>清空所有</span>
+            <div class="text-white font-semibold text-sm tracking-wide">Lens Scanner</div>
+            <button onclick="switchCamera()" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
             </button>
         </div>
         
-        <!-- 侧边栏 - 扫描文档列表 -->
-        <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <div class="sidebar-title">扫描文档 (<span id="scanCount">0</span>)</div>
-                <button class="close-sidebar" id="closeSidebar">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="scans-list" id="scansList">
-                <!-- 扫描项目将动态添加到这里 -->
-            </div>
+        <!-- 缩放控制 -->
+        <div class="zoom-controls">
+            <button class="zoom-btn active" onclick="setZoom(1)" id="zoom1">1x</button>
+            <button class="zoom-btn" onclick="setZoom(2)" id="zoom2">2x</button>
         </div>
         
-        <!-- 编辑模式 - 重新设计为底部操作栏 -->
-        <div class="edit-mode" id="editMode">
-            <div class="edit-header">
-                <button class="icon-btn" id="closeEdit">
-                    <i class="fas fa-times"></i>
-                </button>
-                <div class="edit-title">编辑图片</div>
-            </div>
-            
-            <div class="edit-canvas-container">
-                <canvas id="editCanvas"></canvas>
-            </div>
-            
-            <div class="edit-footer">
-                <div class="edit-tools">
-                    <button class="tool-btn active" data-tool="crop">
-                        <i class="fas fa-crop"></i>
-                        <span>裁剪</span>
-                    </button>
-                    <button class="tool-btn" data-tool="filter">
-                        <i class="fas fa-sliders-h"></i>
-                        <span>白板模式</span>
-                    </button>
-                    <button class="tool-btn" data-tool="rotate">
-                        <i class="fas fa-redo"></i>
-                        <span>旋转</span>
-                    </button>
-                    <button class="tool-btn" data-tool="contrast">
-                        <i class="fas fa-adjust"></i>
-                        <span>对比度</span>
-                    </button>
-                </div>
-                
-                <div class="edit-actions">
-                    <button class="edit-action-btn cancel-edit" id="cancelEdit">
-                        <i class="fas fa-times"></i>
-                        <span>取消</span>
-                    </button>
-                    <button class="edit-action-btn save-edit" id="saveEdit">
-                        <i class="fas fa-check"></i>
-                        <span>保存</span>
-                    </button>
-                </div>
-            </div>
+        <!-- 模式选择器 -->
+        <div class="mode-selector">
+            <div class="mode-btn active" onclick="setMode('whiteboard', this)">白板</div>
+            <div class="mode-btn" onclick="setMode('document', this)">文档</div>
+            <div class="mode-btn" onclick="setMode('photo', this)">照片</div>
+            <div class="mode-btn" onclick="setMode('business', this)">名片</div>
         </div>
         
-        <!-- 加载动画 -->
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <div>正在处理图像...</div>
+        <!-- 上传按钮（备选方案） -->
+        <label class="upload-btn" for="fileInput">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+        </label>
+        <input type="file" id="fileInput" accept="image/*" onchange="handleFileUpload(event)">
+        
+        <!-- 快门按钮 -->
+        <div class="shutter-btn" onclick="capture()">
+            <div class="shutter-inner"></div>
+        </div>
+        
+        <!-- 相册按钮 -->
+        <div class="gallery-btn" onclick="openGallery()">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            <div class="gallery-count" id="galleryCount" style="display: none;">0</div>
         </div>
     </div>
     
-    <!-- 引入jsPDF库 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- 闪光效果 -->
+    <div class="flash-overlay" id="flash"></div>
     
+    <!-- 错误提示 -->
+    <div class="error-message" id="errorMessage">
+        <div class="text-lg font-bold mb-2">无法访问相机</div>
+        <div class="text-sm text-gray-300 mb-4" id="errorText">请允许相机权限或使用上传功能</div>
+        <button class="permission-btn" onclick="retryCamera()">重试</button>
+        <div class="mt-4 text-xs text-gray-500">
+            提示：在Edge浏览器中，请点击地址栏左侧的锁形图标，确保相机权限为"允许"
+        </div>
+    </div>
+    
+    <!-- 预览/编辑界面 -->
+    <div class="preview-container" id="previewContainer">
+        <div class="preview-header">
+            <button onclick="closePreview()" class="text-white font-medium px-2">取消</button>
+            <span class="text-white font-semibold">编辑</span>
+            <button onclick="confirmAndAdd()" class="text-[#00ff88] font-semibold px-2">完成</button>
+        </div>
+        
+        <div class="preview-canvas-container" id="previewCanvasContainer">
+            <canvas id="previewCanvas"></canvas>
+            <div class="crop-frame" id="cropFrame">
+                <div class="crop-handle" style="top: -15px; left: -15px;" data-corner="tl"></div>
+                <div class="crop-handle" style="top: -15px; right: -15px;" data-corner="tr"></div>
+                <div class="crop-handle" style="bottom: -15px; left: -15px;" data-corner="bl"></div>
+                <div class="crop-handle" style="bottom: -15px; right: -15px;" data-corner="br"></div>
+            </div>
+        </div>
+        
+        <div class="filter-bar">
+            <div class="filter-btn active" onclick="applyFilter('original', this)">
+                <div class="filter-icon">O</div>
+                <div>原图</div>
+            </div>
+            <div class="filter-btn" onclick="applyFilter('whiteboard', this)">
+                <div class="filter-icon">W</div>
+                <div>白板</div>
+            </div>
+            <div class="filter-btn" onclick="applyFilter('document', this)">
+                <div class="filter-icon">D</div>
+                <div>文档</div>
+            </div>
+            <div class="filter-btn" onclick="applyFilter('gray', this)">
+                <div class="filter-icon">G</div>
+                <div>灰度</div>
+            </div>
+            <div class="filter-btn" onclick="applyFilter('bw', this)">
+                <div class="filter-icon">B</div>
+                <div>黑白</div>
+            </div>
+            <div class="filter-btn" onclick="applyFilter('magic', this)">
+                <div class="filter-icon">✨</div>
+                <div>魔法</div>
+            </div>
+        </div>
+        
+        <div class="action-bar">
+            <button class="action-btn btn-secondary" onclick="rotateImage()">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                <span>旋转</span>
+            </button>
+            <button class="action-btn btn-secondary" onclick="toggleCrop()">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                <span>裁剪</span>
+            </button>
+            <button class="action-btn btn-primary" onclick="confirmAndAdd()">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                <span>确认添加</span>
+            </button>
+        </div>
+    </div>
+    
+    <!-- 相册界面 -->
+    <div class="gallery-modal" id="galleryModal">
+        <div class="preview-header">
+            <button onclick="closeGallery()" class="text-white">关闭</button>
+            <span class="text-white font-semibold">相册 (<span id="galleryTotal">0</span>)</span>
+            <button onclick="selectAll()" class="text-[#00ff88]">全选</button>
+        </div>
+        <div class="gallery-grid" id="galleryGrid"></div>
+        <div class="gallery-actions">
+            <button class="action-btn btn-secondary" onclick="deleteSelected()">删除</button>
+            <button class="action-btn btn-primary" onclick="exportPDF()">导出 PDF</button>
+        </div>
+    </div>
+    
+    <!-- 处理中提示 -->
+    <div class="processing-overlay" id="processing">
+        <div class="spinner"></div>
+        <div class="text-lg font-medium">正在处理...</div>
+        <div class="text-sm text-gray-400 mt-2" id="processingText"></div>
+    </div>
+    
+    <div class="toast" id="toast"></div>
+    
+    <canvas id="processCanvas" class="hidden-canvas"></canvas>
+    <canvas id="tempCanvas" class="hidden-canvas"></canvas>
+
     <script>
-        // 全局变量
-        let videoStream = null;
-        let scans = [];
-        let currentEditIndex = null;
-        let currentTool = 'crop';
-        let flashOn = false;
+        let stream = null;
+        let currentMode = 'whiteboard';
+        let capturedImages = [];
+        let currentImage = null;
+        let currentFilter = 'original';
+        let isCropping = false;
+        let cropCorners = { tl: {x: 0.05, y: 0.05}, tr: {x: 0.95, y: 0.05}, bl: {x: 0.05, y: 0.95}, br: {x: 0.95, y: 0.95} };
+        let activeHandle = null;
+        let videoTrack = null;
+        let currentZoom = 1;
+        let isCameraReady = false;
         
-        // DOM元素
-        const videoElement = document.getElementById('videoElement');
-        const captureBtn = document.getElementById('captureBtn');
-        const toggleSidebarBtn = document.getElementById('toggleSidebar');
-        const closeSidebarBtn = document.getElementById('closeSidebar');
-        const sidebar = document.getElementById('sidebar');
-        const scansList = document.getElementById('scansList');
-        const scanCount = document.getElementById('scanCount');
-        const editMode = document.getElementById('editMode');
-        const editCanvas = document.getElementById('editCanvas');
-        const editCtx = editCanvas.getContext('2d');
-        const closeEditBtn = document.getElementById('closeEdit');
-        const cancelEditBtn = document.getElementById('cancelEdit');
-        const saveEditBtn = document.getElementById('saveEdit');
-        const toolButtons = document.querySelectorAll('.tool-btn');
-        const savePdfBtn = document.getElementById('savePdf');
-        const clearAllBtn = document.getElementById('clearAll');
-        const loading = document.getElementById('loading');
-        const toggleFlashBtn = document.getElementById('toggleFlash');
-        const pdfHint = document.getElementById('pdfHint');
-        
-        // 初始化相机
         async function initCamera() {
+            hideError();
+            
+            if (!window.isSecureContext) {
+                showError('需要在安全环境下运行（HTTPS或localhost）', '请确保通过 https:// 访问此页面，或使用 localhost 进行测试');
+                return;
+            }
+            
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showError('浏览器不支持相机访问', '您的浏览器不支持 getUserMedia API，请使用 Chrome、Edge 或 Safari 最新版本');
+                return;
+            }
+            
             try {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
+                
                 const constraints = {
                     video: {
-                        facingMode: 'environment',
+                        facingMode: { ideal: 'environment' },
                         width: { ideal: 1920 },
                         height: { ideal: 1080 }
                     },
                     audio: false
                 };
                 
-                videoStream = await navigator.mediaDevices.getUserMedia(constraints);
-                videoElement.srcObject = videoStream;
-            } catch (error) {
-                console.error('无法访问相机:', error);
-                alert('无法访问相机。请确保已授予相机权限。\n\n提示：请确保通过 https:// 或 http://localhost 访问此页面。');
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                
+                await new Promise((resolve, reject) => {
+                    video.onloadedmetadata = () => resolve();
+                    video.onerror = reject;
+                    setTimeout(() => reject(new Error('视频加载超时')), 10000);
+                });
+                
+                videoTrack = stream.getVideoTracks()[0];
+                video.classList.add('active');
+                isCameraReady = true;
+                
+                if (currentMode === 'whiteboard' || currentMode === 'document') {
+                    document.getElementById('scanOverlay').classList.add('active');
+                }
+                
+                showToast('相机已就绪');
+                
+            } catch (err) {
+                console.error('相机初始化失败:', err);
+                handleCameraError(err);
             }
         }
         
-        // 拍照
-        captureBtn.addEventListener('click', captureImage);
+        function handleCameraError(err) {
+            let title = '无法访问相机';
+            let message = '请检查相机权限设置';
+            
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                message = '相机权限被拒绝。请在浏览器设置中允许相机访问';
+            } else if (err.name === 'NotFoundError') {
+                message = '未找到相机设备';
+            } else if (err.name === 'NotReadableError') {
+                message = '相机被其他应用占用';
+            } else if (err.name === 'OverconstrainedError') {
+                message = '正在尝试默认设置...';
+                retryWithDefaultConstraints();
+                return;
+            } else if (err.name === 'SecurityError') {
+                message = '请在 https:// 环境下使用';
+            }
+            
+            showError(title, message);
+        }
         
-        async function captureImage() {
-            if (!videoStream) return;
+        async function retryWithDefaultConstraints() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.classList.add('active');
+                isCameraReady = true;
+                hideError();
+                showToast('相机已就绪（默认模式）');
+            } catch (err) {
+                showError('相机访问失败', '无法启动相机，请使用上传功能代替');
+            }
+        }
+        
+        function showError(title, text) {
+            document.getElementById('errorMessage').classList.add('active');
+            document.querySelector('#errorMessage .text-lg').textContent = title;
+            document.getElementById('errorText').textContent = text;
+        }
+        
+        function hideError() {
+            document.getElementById('errorMessage').classList.remove('active');
+        }
+        
+        function retryCamera() {
+            initCamera();
+        }
+        
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
             
-            // 显示加载动画
-            loading.style.display = 'flex';
-            
-            // 创建临时canvas捕获视频帧
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            
-            // 设置canvas尺寸为视频实际尺寸
-            tempCanvas.width = videoElement.videoWidth;
-            tempCanvas.height = videoElement.videoHeight;
-            
-            // 绘制视频帧到canvas（已修复镜像问题）
-            tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
-            
-            // 获取图像数据
-            const imageData = tempCanvas.toDataURL('image/jpeg', 0.9);
-            
-            // 创建扫描对象
-            const scan = {
-                id: Date.now(),
-                imageData: imageData,
-                editedImageData: null,
-                pageNumber: scans.length + 1,
-                filter: 'none',
-                rotation: 0,
-                crop: { x: 0, y: 0, width: 1, height: 1 }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                currentImage = e.target.result;
+                currentFilter = 'original';
+                showPreview();
+                showToast('图片已加载');
             };
-            
-            // 添加到扫描列表
-            scans.push(scan);
-            
-            // 更新UI
-            updateScansList();
-            
-            // 显示PDF提示（当有扫描文档时）
-            if (scans.length > 0) {
-                pdfHint.style.display = 'block';
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        }
+        
+        async function toggleFlash() {
+            if (!videoTrack) {
+                showToast('相机未就绪');
+                return;
             }
-            
-            // 隐藏加载动画
-            setTimeout(() => {
-                loading.style.display = 'none';
-                
-                // 自动打开编辑模式
-                openEditMode(scans.length - 1);
-            }, 500);
-        }
-        
-        // 更新扫描列表
-        function updateScansList() {
-            scansList.innerHTML = '';
-            scanCount.textContent = scans.length;
-            
-            scans.forEach((scan, index) => {
-                const scanItem = document.createElement('div');
-                scanItem.className = 'scan-item';
-                scanItem.dataset.index = index;
-                
-                // 使用编辑后的图像或原始图像
-                const imgSrc = scan.editedImageData || scan.imageData;
-                
-                scanItem.innerHTML = `
-                    <img class="scan-thumbnail" src="${imgSrc}" alt="扫描文档 ${scan.pageNumber}">
-                    <div class="scan-info">
-                        <div class="scan-page-number">第 ${scan.pageNumber} 页</div>
-                        <div class="scan-actions">
-                            <button class="scan-btn edit-scan" data-index="${index}">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button class="scan-btn delete-scan" data-index="${index}">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
-                
-                scansList.appendChild(scanItem);
-                
-                // 添加事件监听器
-                scanItem.querySelector('.edit-scan').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    openEditMode(index);
-                });
-                
-                scanItem.querySelector('.delete-scan').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    deleteScan(index);
-                });
-                
-                scanItem.addEventListener('click', () => {
-                    selectScan(index);
-                });
-            });
-        }
-        
-        // 打开编辑模式
-        function openEditMode(index) {
-            currentEditIndex = index;
-            const scan = scans[index];
-            
-            // 设置编辑画布尺寸
-            const img = new Image();
-            img.onload = function() {
-                // 计算适合屏幕的尺寸
-                const maxWidth = window.innerWidth - 40;
-                const maxHeight = window.innerHeight - 250; // 为底部工具栏留出空间
-                
-                let width = img.width;
-                let height = img.height;
-                
-                // 保持宽高比
-                if (width > maxWidth) {
-                    height = (maxWidth / width) * height;
-                    width = maxWidth;
-                }
-                
-                if (height > maxHeight) {
-                    width = (maxHeight / height) * width;
-                    height = maxHeight;
-                }
-                
-                editCanvas.width = width;
-                editCanvas.height = height;
-                
-                // 绘制图像到编辑画布
-                editCtx.clearRect(0, 0, editCanvas.width, editCanvas.height);
-                editCtx.save();
-                
-                // 应用旋转
-                if (scan.rotation !== 0) {
-                    editCtx.translate(editCanvas.width / 2, editCanvas.height / 2);
-                    editCtx.rotate(scan.rotation * Math.PI / 180);
-                    
-                    // 根据旋转调整绘制位置
-                    let drawWidth = editCanvas.width;
-                    let drawHeight = editCanvas.height;
-                    
-                    if (scan.rotation % 180 !== 0) {
-                        drawWidth = editCanvas.height;
-                        drawHeight = editCanvas.width;
-                    }
-                    
-                    editCtx.drawImage(img, -drawWidth/2, -drawHeight/2, drawWidth, drawHeight);
-                    editCtx.restore();
+            try {
+                const capabilities = videoTrack.getCapabilities();
+                if (capabilities.torch) {
+                    const settings = videoTrack.getSettings();
+                    await videoTrack.applyConstraints({
+                        advanced: [{ torch: !settings.torch }]
+                    });
+                    showToast(settings.torch ? '闪光灯已关闭' : '闪光灯已开启');
                 } else {
-                    editCtx.drawImage(img, 0, 0, editCanvas.width, editCanvas.height);
+                    showToast('设备不支持闪光灯');
                 }
-                
-                // 应用白板模式滤镜
-                if (scan.filter === 'whiteboard') {
-                    applyWhiteboardFilter();
-                }
-                
-                // 显示编辑模式
-                editMode.style.display = 'flex';
-            };
-            
-            img.src = scan.editedImageData || scan.imageData;
-        }
-        
-        // 应用白板模式滤镜
-        function applyWhiteboardFilter() {
-            const imageData = editCtx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-            const data = imageData.data;
-            
-            // 增强对比度并减少阴影
-            for (let i = 0; i < data.length; i += 4) {
-                // 获取RGB值
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                
-                // 转换为灰度（简单平均）
-                const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-                
-                // 增强对比度
-                let enhanced = gray;
-                enhanced = (enhanced - 128) * 1.5 + 128;
-                
-                // 限制在0-255范围内
-                enhanced = Math.max(0, Math.min(255, enhanced));
-                
-                // 减少阴影（提高暗部）
-                if (enhanced < 100) {
-                    enhanced = enhanced * 1.3;
-                }
-                
-                // 设置新的RGB值（灰度）
-                data[i] = enhanced;
-                data[i + 1] = enhanced;
-                data[i + 2] = enhanced;
-            }
-            
-            editCtx.putImageData(imageData, 0, 0);
-        }
-        
-        // 保存编辑
-        saveEditBtn.addEventListener('click', saveEdit);
-        
-        function saveEdit() {
-            if (currentEditIndex === null) return;
-            
-            const scan = scans[currentEditIndex];
-            
-            // 保存编辑后的图像
-            scan.editedImageData = editCanvas.toDataURL('image/jpeg', 0.9);
-            
-            // 应用当前选择的滤镜
-            scan.filter = currentTool === 'filter' ? 'whiteboard' : 'none';
-            
-            // 更新扫描列表
-            updateScansList();
-            
-            // 关闭编辑模式
-            closeEditMode();
-        }
-        
-        // 关闭编辑模式
-        closeEditBtn.addEventListener('click', closeEditMode);
-        cancelEditBtn.addEventListener('click', closeEditMode);
-        
-        function closeEditMode() {
-            editMode.style.display = 'none';
-            currentEditIndex = null;
-        }
-        
-        // 工具按钮点击事件
-        toolButtons.forEach(btn => {
-            btn.addEventListener('click', function() {
-                // 移除其他按钮的激活状态
-                toolButtons.forEach(b => b.classList.remove('active'));
-                // 添加当前按钮的激活状态
-                this.classList.add('active');
-                
-                currentTool = this.dataset.tool;
-                
-                // 应用工具效果
-                applyTool(currentTool);
-            });
-        });
-        
-        // 应用工具效果
-        function applyTool(tool) {
-            if (currentEditIndex === null) return;
-            
-            const scan = scans[currentEditIndex];
-            
-            // 重新绘制原始图像
-            const img = new Image();
-            img.onload = function() {
-                editCtx.clearRect(0, 0, editCanvas.width, editCanvas.height);
-                editCtx.save();
-                
-                // 应用旋转
-                if (scan.rotation !== 0) {
-                    editCtx.translate(editCanvas.width / 2, editCanvas.height / 2);
-                    editCtx.rotate(scan.rotation * Math.PI / 180);
-                    
-                    let drawWidth = editCanvas.width;
-                    let drawHeight = editCanvas.height;
-                    
-                    if (scan.rotation % 180 !== 0) {
-                        drawWidth = editCanvas.height;
-                        drawHeight = editCanvas.width;
-                    }
-                    
-                    editCtx.drawImage(img, -drawWidth/2, -drawHeight/2, drawWidth, drawHeight);
-                    editCtx.restore();
-                } else {
-                    editCtx.drawImage(img, 0, 0, editCanvas.width, editCanvas.height);
-                }
-                
-                // 根据工具应用效果
-                switch(tool) {
-                    case 'filter':
-                        applyWhiteboardFilter();
-                        break;
-                    case 'rotate':
-                        // 旋转图像
-                        scan.rotation = (scan.rotation + 90) % 360;
-                        // 重新绘制
-                        applyTool('crop'); // 切换回裁剪工具并重新绘制
-                        document.querySelector('.tool-btn[data-tool="crop"]').click();
-                        break;
-                    case 'contrast':
-                        // 增强对比度
-                        const imageData = editCtx.getImageData(0, 0, editCanvas.width, editCanvas.height);
-                        const data = imageData.data;
-                        
-                        for (let i = 0; i < data.length; i += 4) {
-                            // 增强对比度
-                            data[i] = ((data[i] - 128) * 1.3) + 128;
-                            data[i+1] = ((data[i+1] - 128) * 1.3) + 128;
-                            data[i+2] = ((data[i+2] - 128) * 1.3) + 128;
-                        }
-                        
-                        editCtx.putImageData(imageData, 0, 0);
-                        break;
-                    // 裁剪工具需要手动交互，这里只显示裁剪区域
-                    case 'crop':
-                        // 绘制裁剪区域边框
-                        editCtx.strokeStyle = '#4a8cff';
-                        editCtx.lineWidth = 2;
-                        editCtx.setLineDash([5, 5]);
-                        editCtx.strokeRect(
-                            editCanvas.width * 0.1, 
-                            editCanvas.height * 0.1, 
-                            editCanvas.width * 0.8, 
-                            editCanvas.height * 0.8
-                        );
-                        editCtx.setLineDash([]);
-                        break;
-                }
-            };
-            
-            img.src = scan.imageData;
-        }
-        
-        // 选择扫描项目
-        function selectScan(index) {
-            // 移除所有选择
-            document.querySelectorAll('.scan-item').forEach(item => {
-                item.classList.remove('selected');
-            });
-            
-            // 添加当前选择
-            document.querySelector(`.scan-item[data-index="${index}"]`).classList.add('selected');
-        }
-        
-        // 删除扫描项目
-        function deleteScan(index) {
-            if (confirm('确定要删除此扫描文档吗？')) {
-                scans.splice(index, 1);
-                
-                // 更新页码
-                scans.forEach((scan, i) => {
-                    scan.pageNumber = i + 1;
-                });
-                
-                updateScansList();
-                
-                // 如果没有扫描文档了，隐藏PDF提示
-                if (scans.length === 0) {
-                    pdfHint.style.display = 'none';
-                }
+            } catch (e) {
+                showToast('闪光灯控制失败');
             }
         }
         
-        // 切换侧边栏
-        toggleSidebarBtn.addEventListener('click', () => {
-            sidebar.classList.add('open');
-        });
-        
-        closeSidebarBtn.addEventListener('click', () => {
-            sidebar.classList.remove('open');
-        });
-        
-        // 切换闪光灯（模拟）
-        toggleFlashBtn.addEventListener('click', () => {
-            flashOn = !flashOn;
-            toggleFlashBtn.innerHTML = flashOn ? 
-                '<i class="fas fa-bolt" style="color: #ffcc00"></i>' : 
-                '<i class="fas fa-bolt"></i>';
-            
-            // 在真实应用中，这里会控制相机闪光灯
-            console.log('闪光灯:', flashOn ? '开' : '关');
-        });
-        
-        // 生成PDF
-        savePdfBtn.addEventListener('click', generatePDF);
-        
-        async function generatePDF() {
-            if (scans.length === 0) {
-                alert('没有扫描文档可生成PDF');
+        async function switchCamera() {
+            if (!stream) {
+                showToast('相机未启动');
                 return;
             }
             
-            loading.style.display = 'flex';
+            const currentFacing = stream.getVideoTracks()[0].getSettings().facingMode;
+            const newFacing = currentFacing === 'environment' ? 'user' : 'environment';
+            
+            stream.getTracks().forEach(track => track.stop());
             
             try {
-                // 使用jsPDF
-                const { jsPDF } = window.jspdf;
-                const pdf = new jsPDF('p', 'mm', 'a4');
-                
-                for (let i = 0; i < scans.length; i++) {
-                    const scan = scans[i];
-                    
-                    // 如果不是第一页，添加新页
-                    if (i > 0) {
-                        pdf.addPage();
-                    }
-                    
-                    // 获取图像数据
-                    const imgData = scan.editedImageData || scan.imageData;
-                    
-                    // 将图像添加到PDF
-                    const imgProps = pdf.getImageProperties(imgData);
-                    const pdfWidth = pdf.internal.pageSize.getWidth();
-                    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-                    
-                    // 如果图像高度超过PDF页面，调整大小
-                    const pageHeight = pdf.internal.pageSize.getHeight();
-                    const height = pdfHeight > pageHeight ? pageHeight - 20 : pdfHeight;
-                    const width = (imgProps.width * height) / imgProps.height;
-                    
-                    // 居中显示
-                    const x = (pdfWidth - width) / 2;
-                    const y = (pageHeight - height) / 2;
-                    
-                    pdf.addImage(imgData, 'JPEG', x, y, width, height);
-                    
-                    // 添加页码
-                    pdf.setFontSize(10);
-                    pdf.setTextColor(150);
-                    pdf.text(`第 ${i + 1} 页`, pdfWidth / 2, pageHeight - 10, { align: 'center' });
-                }
-                
-                // 保存PDF
-                const fileName = `文档扫描_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`;
-                pdf.save(fileName);
-                
-                // 显示成功消息
-                setTimeout(() => {
-                    loading.style.display = 'none';
-                    alert(`PDF已生成并下载: ${fileName}\n包含 ${scans.length} 页文档`);
-                }, 1000);
-                
-            } catch (error) {
-                console.error('生成PDF时出错:', error);
-                loading.style.display = 'none';
-                alert('生成PDF时出错，请重试\n\n错误信息: ' + error.message);
+                const newStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: newFacing },
+                    audio: false
+                });
+                stream = newStream;
+                videoTrack = newStream.getVideoTracks()[0];
+                document.getElementById('video').srcObject = newStream;
+                showToast(newFacing === 'environment' ? '后置相机' : '前置相机');
+            } catch (err) {
+                showToast('切换失败，正在重试...');
+                initCamera();
             }
         }
         
-        // 清空所有扫描
-        clearAllBtn.addEventListener('click', () => {
-            if (scans.length === 0) return;
+        function setZoom(level) {
+            currentZoom = level;
+            document.querySelectorAll('.zoom-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`zoom${level}`).classList.add('active');
             
-            if (confirm(`确定要清空所有 ${scans.length} 个扫描文档吗？`)) {
-                scans = [];
-                updateScansList();
-                sidebar.classList.remove('open');
-                pdfHint.style.display = 'none';
+            if (videoTrack && videoTrack.getCapabilities().zoom) {
+                videoTrack.applyConstraints({ advanced: [{ zoom: level }] })
+                    .then(() => showToast(`${level}x 变焦`))
+                    .catch(() => showToast('不支持变焦'));
+            } else {
+                const video = document.getElementById('video');
+                video.style.transform = `scaleX(1) scale(${level})`;
+                showToast(`${level}x 数码变焦`);
             }
+        }
+        
+        function setMode(mode, element) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            element.classList.add('active');
+            
+            const overlay = document.getElementById('scanOverlay');
+            if (mode === 'whiteboard' || mode === 'document') {
+                overlay.classList.add('active');
+            } else {
+                overlay.classList.remove('active');
+            }
+            
+            const modes = {
+                'whiteboard': '白板模式：优化文字和图表',
+                'document': '文档模式：增强文字清晰度',
+                'photo': '照片模式：保持原始色彩',
+                'business': '名片模式：自动识别边框'
+            };
+            showToast(modes[mode]);
+        }
+        
+        function capture() {
+            if (!isCameraReady) {
+                showToast('相机未就绪，请使用上传功能');
+                document.getElementById('fileInput').click();
+                return;
+            }
+            
+            const flash = document.getElementById('flash');
+            flash.classList.add('active');
+            setTimeout(() => flash.classList.remove('active'), 100);
+            
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('processCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth || 1920;
+            canvas.height = video.videoHeight || 1080;
+            
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            currentImage = canvas.toDataURL('image/jpeg', 1.0);
+            currentFilter = currentMode === 'whiteboard' ? 'whiteboard' : 
+                          currentMode === 'document' ? 'document' : 'original';
+            
+            showPreview();
+        }
+        
+        function showPreview() {
+            const container = document.getElementById('previewContainer');
+            const canvas = document.getElementById('previewCanvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                
+                if (currentFilter !== 'original') {
+                    applyFilter(currentFilter, document.querySelector(`.filter-btn[onclick*="${currentFilter}"]`));
+                }
+                
+                resetCropCorners();
+            };
+            img.src = currentImage;
+            
+            container.classList.add('active');
+        }
+        
+        function closePreview() {
+            document.getElementById('previewContainer').classList.remove('active');
+            isCropping = false;
+            document.getElementById('cropFrame').classList.remove('active');
+            currentImage = null;
+            currentFilter = 'original';
+        }
+        
+        // 确认并添加图片到相册，然后返回拍摄状态
+        function confirmAndAdd() {
+            if (!currentImage) {
+                showToast('没有可保存的图片');
+                return;
+            }
+            
+            // 保存当前编辑后的图片
+            const canvas = document.getElementById('previewCanvas');
+            const finalImage = canvas.toDataURL('image/jpeg', 0.95);
+            
+            capturedImages.push({
+                id: Date.now(),
+                data: finalImage,
+                filter: currentFilter,
+                timestamp: new Date().toLocaleString()
+            });
+            
+            updateGalleryCount();
+            
+            // 关闭预览界面，返回相机
+            closePreview();
+            
+            showToast(`已添加，共 ${capturedImages.length} 张，继续拍摄`);
+        }
+        
+        function applyFilter(filter, element) {
+            if (!currentImage) return;
+            
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            if (element) element.classList.add('active');
+            
+            const canvas = document.getElementById('previewCanvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                
+                if (filter === 'original') return;
+                
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                
+                switch(filter) {
+                    case 'whiteboard':
+                        applyWhiteboardFilter(data, canvas.width, canvas.height);
+                        break;
+                    case 'document':
+                        applyDocumentFilter(data, canvas.width, canvas.height);
+                        break;
+                    case 'gray':
+                        applyGrayscale(data);
+                        break;
+                    case 'bw':
+                        applyBlackWhite(data);
+                        break;
+                    case 'magic':
+                        applyMagicColor(data);
+                        break;
+                }
+                
+                ctx.putImageData(imageData, 0, 0);
+            };
+            img.src = currentImage;
+        }
+        
+        function applyWhiteboardFilter(data, width, height) {
+            let totalBrightness = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                totalBrightness += (data[i] + data[i+1] + data[i+2]) / 3;
+            }
+            const avgBrightness = totalBrightness / (data.length / 4);
+            const threshold = avgBrightness * 0.85;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const brightness = (data[i] + data[i+1] + data[i+2]) / 3;
+                
+                if (brightness > threshold) {
+                    data[i] = 255;
+                    data[i+1] = 255;
+                    data[i+2] = 255;
+                } else {
+                    const factor = 1.5;
+                    data[i] = Math.min(255, data[i] * factor);
+                    data[i+1] = Math.min(255, data[i+1] * factor);
+                    data[i+2] = Math.min(255, data[i+2] * factor);
+                }
+            }
+            sharpenImage(data, width, height, 0.3);
+        }
+        
+        function applyDocumentFilter(data, width, height) {
+            const contrast = 1.4;
+            const intercept = 128 * (1 - contrast);
+            
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.max(0, Math.min(255, data[i] * contrast + intercept));
+                data[i+1] = Math.max(0, Math.min(255, data[i+1] * contrast + intercept));
+                data[i+2] = Math.max(0, Math.min(255, data[i+2] * contrast + intercept));
+            }
+            sharpenImage(data, width, height, 0.5);
+        }
+        
+        function applyGrayscale(data) {
+            for (let i = 0; i < data.length; i += 4) {
+                const gray = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+                data[i] = data[i+1] = data[i+2] = gray;
+            }
+        }
+        
+        function applyBlackWhite(data) {
+            for (let i = 0; i < data.length; i += 4) {
+                const gray = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+                const val = gray > 128 ? 255 : 0;
+                data[i] = data[i+1] = data[i+2] = val;
+            }
+        }
+        
+        function applyMagicColor(data) {
+            for (let i = 0; i < data.length; i += 4) {
+                const max = Math.max(data[i], data[i+1], data[i+2]);
+                if (max > 0) {
+                    const saturation = 1.5;
+                    data[i] = Math.min(255, data[i] + (data[i] - max) * (saturation - 1));
+                    data[i+1] = Math.min(255, data[i+1] + (data[i+1] - max) * (saturation - 1));
+                    data[i+2] = Math.min(255, data[i+2] + (data[i+2] - max) * (saturation - 1));
+                }
+            }
+        }
+        
+        function sharpenImage(data, width, height, strength) {
+            const copy = new Uint8ClampedArray(data);
+            const w = width;
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const idx = (y * w + x) * 4;
+                    for (let c = 0; c < 3; c++) {
+                        const val = -copy[idx - w*4 + c] - copy[idx - 4 + c] - copy[idx + 4 + c] - copy[idx + w*4 + c] + 5*copy[idx + c];
+                        data[idx + c] = copy[idx + c] + (val - copy[idx + c]) * strength;
+                    }
+                }
+            }
+        }
+        
+        function rotateImage() {
+            const canvas = document.getElementById('previewCanvas');
+            const temp = document.getElementById('tempCanvas');
+            const tempCtx = temp.getContext('2d');
+            
+            temp.width = canvas.height;
+            temp.height = canvas.width;
+            
+            tempCtx.translate(temp.width/2, temp.height/2);
+            tempCtx.rotate(Math.PI/2);
+            tempCtx.drawImage(canvas, -canvas.width/2, -canvas.height/2);
+            
+            canvas.width = temp.width;
+            canvas.height = temp.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(temp, 0, 0);
+            
+            currentImage = canvas.toDataURL('image/jpeg', 1.0);
+            resetCropCorners();
+            showToast('已旋转90°');
+        }
+        
+        function toggleCrop() {
+            isCropping = !isCropping;
+            const frame = document.getElementById('cropFrame');
+            
+            if (isCropping) {
+                frame.classList.add('active');
+                updateCropFrame();
+                initCropDrag();
+                showToast('拖动角落调整裁剪区域');
+            } else {
+                frame.classList.remove('active');
+                applyCrop();
+            }
+        }
+        
+        function resetCropCorners() {
+            cropCorners = { tl: {x: 0.05, y: 0.05}, tr: {x: 0.95, y: 0.05}, bl: {x: 0.05, y: 0.95}, br: {x: 0.95, y: 0.95} };
+            if (isCropping) updateCropFrame();
+        }
+        
+        function updateCropFrame() {
+            const canvas = document.getElementById('previewCanvas');
+            const container = document.getElementById('previewCanvasContainer');
+            const frame = document.getElementById('cropFrame');
+            const rect = canvas.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            
+            const left = rect.left - containerRect.left + cropCorners.tl.x * rect.width;
+            const top = rect.top - containerRect.top + cropCorners.tl.y * rect.height;
+            const width = (cropCorners.tr.x - cropCorners.tl.x) * rect.width;
+            const height = (cropCorners.bl.y - cropCorners.tl.y) * rect.height;
+            
+            frame.style.left = left + 'px';
+            frame.style.top = top + 'px';
+            frame.style.width = width + 'px';
+            frame.style.height = height + 'px';
+        }
+        
+        function initCropDrag() {
+            const handles = document.querySelectorAll('.crop-handle');
+            
+            handles.forEach(handle => {
+                handle.addEventListener('touchstart', handleDragStart, {passive: false});
+                handle.addEventListener('mousedown', handleDragStart);
+            });
+            
+            function handleDragStart(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                activeHandle = e.target.dataset.corner;
+                
+                document.addEventListener('touchmove', handleDrag, {passive: false});
+                document.addEventListener('touchend', handleDragEnd);
+                document.addEventListener('mousemove', handleDrag);
+                document.addEventListener('mouseup', handleDragEnd);
+            }
+            
+            function handleDrag(e) {
+                if (!activeHandle) return;
+                e.preventDefault();
+                
+                const canvas = document.getElementById('previewCanvas');
+                const rect = canvas.getBoundingClientRect();
+                
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                
+                const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+                
+                switch(activeHandle) {
+                    case 'tl':
+                        cropCorners.tl.x = Math.min(x, cropCorners.tr.x - 0.05);
+                        cropCorners.tl.y = Math.min(y, cropCorners.bl.y - 0.05);
+                        break;
+                    case 'tr':
+                        cropCorners.tr.x = Math.max(x, cropCorners.tl.x + 0.05);
+                        cropCorners.tr.y = Math.min(y, cropCorners.br.y - 0.05);
+                        break;
+                    case 'bl':
+                        cropCorners.bl.x = Math.min(x, cropCorners.br.x - 0.05);
+                        cropCorners.bl.y = Math.max(y, cropCorners.tl.y + 0.05);
+                        break;
+                    case 'br':
+                        cropCorners.br.x = Math.max(x, cropCorners.bl.x + 0.05);
+                        cropCorners.br.y = Math.max(y, cropCorners.tr.y + 0.05);
+                        break;
+                }
+                
+                updateCropFrame();
+            }
+            
+            function handleDragEnd() {
+                activeHandle = null;
+                document.removeEventListener('touchmove', handleDrag);
+                document.removeEventListener('touchend', handleDragEnd);
+                document.removeEventListener('mousemove', handleDrag);
+                document.removeEventListener('mouseup', handleDragEnd);
+            }
+        }
+        
+        function applyCrop() {
+            const canvas = document.getElementById('previewCanvas');
+            const temp = document.getElementById('tempCanvas');
+            const tempCtx = temp.getContext('2d');
+            
+            const w = canvas.width;
+            const h = canvas.height;
+            
+            const x1 = Math.floor(cropCorners.tl.x * w);
+            const y1 = Math.floor(cropCorners.tl.y * h);
+            const x2 = Math.floor(cropCorners.br.x * w);
+            const y2 = Math.floor(cropCorners.br.y * h);
+            
+            const cw = Math.max(1, x2 - x1);
+            const ch = Math.max(1, y2 - y1);
+            
+            temp.width = cw;
+            temp.height = ch;
+            
+            tempCtx.drawImage(canvas, x1, y1, cw, ch, 0, 0, cw, ch);
+            
+            canvas.width = cw;
+            canvas.height = ch;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(temp, 0, 0);
+            
+            currentImage = canvas.toDataURL('image/jpeg', 1.0);
+            showToast('已裁剪');
+        }
+        
+        function updateGalleryCount() {
+            const count = document.getElementById('galleryCount');
+            const total = capturedImages.length;
+            
+            if (total > 0) {
+                count.textContent = total > 99 ? '99+' : total;
+                count.style.display = 'flex';
+            } else {
+                count.style.display = 'none';
+            }
+        }
+        
+        function openGallery() {
+            const modal = document.getElementById('galleryModal');
+            const grid = document.getElementById('galleryGrid');
+            const total = document.getElementById('galleryTotal');
+            
+            grid.innerHTML = '';
+            total.textContent = capturedImages.length;
+            
+            capturedImages.forEach((img, index) => {
+                const item = document.createElement('div');
+                item.className = 'gallery-item';
+                item.innerHTML = `<img src="${img.data}" alt="扫描件 ${index + 1}">`;
+                item.onclick = () => item.classList.toggle('selected');
+                grid.appendChild(item);
+            });
+            
+            modal.classList.add('active');
+        }
+        
+        function closeGallery() {
+            document.getElementById('galleryModal').classList.remove('active');
+        }
+        
+        function selectAll() {
+            const items = document.querySelectorAll('.gallery-item');
+            const allSelected = document.querySelectorAll('.gallery-item.selected').length === items.length;
+            items.forEach(item => item.classList.toggle('selected', !allSelected));
+        }
+        
+        function deleteSelected() {
+            const selected = document.querySelectorAll('.gallery-item.selected');
+            if (selected.length === 0) {
+                showToast('请先选择要删除的项目');
+                return;
+            }
+            
+            if (!confirm(`确定删除 ${selected.length} 个项目？`)) return;
+            
+            const indices = Array.from(selected).map(item => 
+                Array.from(item.parentNode.children).indexOf(item)
+            ).sort((a, b) => b - a);
+            
+            indices.forEach(idx => capturedImages.splice(idx, 1));
+            
+            openGallery();
+            updateGalleryCount();
+            showToast(`已删除 ${selected.length} 个，剩余 ${capturedImages.length} 个`);
+        }
+        
+        async function exportPDF() {
+            const selected = document.querySelectorAll('.gallery-item.selected');
+            const imagesToExport = selected.length > 0 ? 
+                Array.from(selected).map(item => {
+                    const idx = Array.from(item.parentNode.children).indexOf(item);
+                    return capturedImages[idx];
+                }) : capturedImages;
+            
+            if (imagesToExport.length === 0) {
+                showToast('相册为空');
+                return;
+            }
+            
+            if (imagesToExport.length > 200) {
+                if (!confirm(`您选择了 ${imagesToExport.length} 张图片，生成PDF可能需要较长时间，是否继续？`)) return;
+            }
+            
+            const processing = document.getElementById('processing');
+            const processingText = document.getElementById('processingText');
+            processing.classList.add('active');
+            
+            try {
+                const { PDFDocument } = PDFLib;
+                const pdfDoc = await PDFDocument.create();
+                
+                for (let i = 0; i < imagesToExport.length; i++) {
+                    if (i % 10 === 0) {
+                        processingText.textContent = `正在处理第 ${i+1}/${imagesToExport.length} 页...`;
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                    }
+                    
+                    const img = await loadImage(imagesToExport[i].data);
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    const a4Width = 2480;
+                    const a4Height = 3508;
+                    
+                    const imgRatio = img.width / img.height;
+                    const a4Ratio = a4Width / a4Height;
+                    
+                    let drawWidth, drawHeight, offsetX, offsetY;
+                    
+                    if (imgRatio > a4Ratio) {
+                        drawWidth = a4Width;
+                        drawHeight = a4Width / imgRatio;
+                        offsetX = 0;
+                        offsetY = (a4Height - drawHeight) / 2;
+                    } else {
+                        drawHeight = a4Height;
+                        drawWidth = a4Height * imgRatio;
+                        offsetX = (a4Width - drawWidth) / 2;
+                        offsetY = 0;
+                    }
+                    
+                    canvas.width = a4Width;
+                    canvas.height = a4Height;
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, a4Width, a4Height);
+                    ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+                    
+                    const jpegData = canvas.toDataURL('image/jpeg', 0.95);
+                    const jpegImage = await pdfDoc.embedJpg(jpegData.split(',')[1]);
+                    
+                    const page = pdfDoc.addPage([595.28, 841.89]);
+                    page.drawImage(jpegImage, {
+                        x: 0, y: 0, width: 595.28, height: 841.89
+                    });
+                }
+                
+                processingText.textContent = '正在生成PDF文件...';
+                const pdfBytes = await pdfDoc.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `扫描文档_${new Date().toLocaleDateString().replace(/\//g, '-')}_${imagesToExport.length}页.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                processing.classList.remove('active');
+                showToast(`PDF导出成功！共 ${imagesToExport.length} 页`);
+                
+            } catch (err) {
+                console.error('PDF导出失败:', err);
+                processing.classList.remove('active');
+                showToast('导出失败：' + err.message);
+            }
+        }
+        
+        function loadImage(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = src;
+            });
+        }
+        
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2500);
+        }
+        
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (isCropping) updateCropFrame();
+            }, 100);
         });
         
-        // 初始化应用
-        window.addEventListener('DOMContentLoaded', initCamera);
-        
-        // 添加触摸事件支持
-        document.addEventListener('touchstart', function(e) {
-            // 防止触摸时触发点击高亮
-            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'I') {
-                e.target.classList.add('active');
-            }
-        }, { passive: true });
-        
-        document.addEventListener('touchend', function(e) {
-            // 移除触摸高亮
-            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'I') {
-                e.target.classList.remove('active');
-            }
-        }, { passive: true });
-        
-        // 处理窗口大小变化
-        window.addEventListener('resize', function() {
-            if (currentEditIndex !== null) {
-                // 重新打开编辑模式以调整画布大小
-                const tempIndex = currentEditIndex;
-                closeEditMode();
-                setTimeout(() => openEditMode(tempIndex), 100);
-            }
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(initCamera, 100);
+            
+            document.addEventListener('touchmove', (e) => {
+                if (e.target.closest('.gallery-grid') || e.target.closest('.filter-bar')) return;
+                e.preventDefault();
+            }, { passive: false });
+            
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden && !isCameraReady) {
+                    setTimeout(initCamera, 500);
+                }
+            });
         });
         
-        // 提示用户使用说明
-        setTimeout(() => {
-            if (scans.length === 0) {
-                alert('欢迎使用文档扫描仪！\n\n使用说明：\n1. 将文档置于取景框内\n2. 点击圆形按钮拍照\n3. 使用底部编辑工具优化图像\n4. 点击"保存"完成编辑\n5. 拍摄多张后，点击"生成PDF"导出\n\n请确保相机权限已开启。');
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !e.repeat && isCameraReady) {
+                e.preventDefault();
+                capture();
             }
-        }, 1500);
+            if (e.code === 'Enter' && document.getElementById('previewContainer').classList.contains('active')) {
+                e.preventDefault();
+                confirmAndAdd();
+            }
+        });
     </script>
 </body>
 </html>
