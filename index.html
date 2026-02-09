@@ -91,7 +91,6 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            //transform: scaleX(-1); /* 镜像翻转 */
         }
         
         .camera-overlay {
@@ -328,7 +327,7 @@
             color: white;
         }
         
-        /* 编辑模式 */
+        /* 编辑模式 - 重新设计为底部操作栏 */
         .edit-mode {
             position: absolute;
             top: 0;
@@ -341,7 +340,7 @@
             flex-direction: column;
         }
         
-        .edit-toolbar {
+        .edit-header {
             padding: 16px;
             background: rgba(0, 0, 0, 0.8);
             display: flex;
@@ -350,30 +349,9 @@
             backdrop-filter: blur(10px);
         }
         
-        .edit-tools {
-            display: flex;
-            gap: 10px;
-            overflow-x: auto;
-            padding: 10px 0;
-        }
-        
-        .tool-btn {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            color: white;
-            padding: 10px 16px;
-            border-radius: 20px;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            white-space: nowrap;
-            cursor: pointer;
-        }
-        
-        .tool-btn.active {
-            background: #4a8cff;
-            color: white;
+        .edit-title {
+            font-weight: 600;
+            font-size: 18px;
         }
         
         .edit-canvas-container {
@@ -389,6 +367,78 @@
             max-width: 100%;
             max-height: 100%;
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+        }
+        
+        .edit-footer {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .edit-tools {
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            padding: 10px 0;
+            justify-content: center;
+        }
+        
+        .tool-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 12px 18px;
+            border-radius: 25px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            cursor: pointer;
+            min-width: 80px;
+            justify-content: center;
+        }
+        
+        .tool-btn.active {
+            background: #4a8cff;
+            color: white;
+        }
+        
+        .edit-actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .edit-action-btn {
+            flex: 1;
+            padding: 16px;
+            border-radius: 10px;
+            border: none;
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .edit-action-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .save-edit {
+            background: #4a8cff;
+            color: white;
+        }
+        
+        .cancel-edit {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
         }
         
         /* 加载动画 */
@@ -422,19 +472,6 @@
             100% { transform: rotate(360deg); }
         }
         
-        /* 响应式调整 */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                right: -100%;
-            }
-            
-            .document-outline {
-                width: 90%;
-                height: 60%;
-            }
-        }
-        
         /* 提示信息 */
         .hint {
             position: absolute;
@@ -446,6 +483,48 @@
             font-size: 14px;
             padding: 0 20px;
             pointer-events: none;
+        }
+        
+        /* PDF提示 */
+        .pdf-hint {
+            position: absolute;
+            top: 100px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            padding: 0 20px;
+            pointer-events: none;
+        }
+        
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                right: -100%;
+            }
+            
+            .document-outline {
+                width: 90%;
+                height: 60%;
+            }
+            
+            .tool-btn {
+                padding: 10px 14px;
+                min-width: 70px;
+                font-size: 13px;
+            }
+        }
+        
+        @media (max-height: 700px) {
+            .document-outline {
+                height: 60%;
+            }
+            
+            .hint {
+                bottom: 110px;
+            }
         }
     </style>
 </head>
@@ -479,6 +558,9 @@
                 </div>
             </div>
             <div class="hint">将文档置于框内，确保光线充足</div>
+            <div class="pdf-hint" id="pdfHint" style="display: none;">
+                拍摄后点击底部"生成PDF"按钮导出文档合集
+            </div>
         </div>
         
         <!-- 拍照控制 -->
@@ -513,12 +595,20 @@
             </div>
         </div>
         
-        <!-- 编辑模式 -->
+        <!-- 编辑模式 - 重新设计为底部操作栏 -->
         <div class="edit-mode" id="editMode">
-            <div class="edit-toolbar">
+            <div class="edit-header">
                 <button class="icon-btn" id="closeEdit">
                     <i class="fas fa-times"></i>
                 </button>
+                <div class="edit-title">编辑图片</div>
+            </div>
+            
+            <div class="edit-canvas-container">
+                <canvas id="editCanvas"></canvas>
+            </div>
+            
+            <div class="edit-footer">
                 <div class="edit-tools">
                     <button class="tool-btn active" data-tool="crop">
                         <i class="fas fa-crop"></i>
@@ -537,12 +627,17 @@
                         <span>对比度</span>
                     </button>
                 </div>
-                <button class="icon-btn" id="saveEdit">
-                    <i class="fas fa-check"></i>
-                </button>
-            </div>
-            <div class="edit-canvas-container">
-                <canvas id="editCanvas"></canvas>
+                
+                <div class="edit-actions">
+                    <button class="edit-action-btn cancel-edit" id="cancelEdit">
+                        <i class="fas fa-times"></i>
+                        <span>取消</span>
+                    </button>
+                    <button class="edit-action-btn save-edit" id="saveEdit">
+                        <i class="fas fa-check"></i>
+                        <span>保存</span>
+                    </button>
+                </div>
             </div>
         </div>
         
@@ -555,7 +650,6 @@
     
     <!-- 引入jsPDF库 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     
     <script>
         // 全局变量
@@ -577,12 +671,14 @@
         const editCanvas = document.getElementById('editCanvas');
         const editCtx = editCanvas.getContext('2d');
         const closeEditBtn = document.getElementById('closeEdit');
+        const cancelEditBtn = document.getElementById('cancelEdit');
         const saveEditBtn = document.getElementById('saveEdit');
         const toolButtons = document.querySelectorAll('.tool-btn');
         const savePdfBtn = document.getElementById('savePdf');
         const clearAllBtn = document.getElementById('clearAll');
         const loading = document.getElementById('loading');
         const toggleFlashBtn = document.getElementById('toggleFlash');
+        const pdfHint = document.getElementById('pdfHint');
         
         // 初始化相机
         async function initCamera() {
@@ -600,7 +696,7 @@
                 videoElement.srcObject = videoStream;
             } catch (error) {
                 console.error('无法访问相机:', error);
-                alert('无法访问相机。请确保已授予相机权限。');
+                alert('无法访问相机。请确保已授予相机权限。\n\n提示：请确保通过 https:// 或 http://localhost 访问此页面。');
             }
         }
         
@@ -621,9 +717,7 @@
             tempCanvas.width = videoElement.videoWidth;
             tempCanvas.height = videoElement.videoHeight;
             
-            // 绘制视频帧到canvas（考虑镜像翻转）
-            //tempCtx.translate(tempCanvas.width, 0);
-            //tempCtx.scale(-1, 1);
+            // 绘制视频帧到canvas（已修复镜像问题）
             tempCtx.drawImage(videoElement, 0, 0, tempCanvas.width, tempCanvas.height);
             
             // 获取图像数据
@@ -645,6 +739,11 @@
             
             // 更新UI
             updateScansList();
+            
+            // 显示PDF提示（当有扫描文档时）
+            if (scans.length > 0) {
+                pdfHint.style.display = 'block';
+            }
             
             // 隐藏加载动画
             setTimeout(() => {
@@ -712,7 +811,7 @@
             img.onload = function() {
                 // 计算适合屏幕的尺寸
                 const maxWidth = window.innerWidth - 40;
-                const maxHeight = window.innerHeight - 150;
+                const maxHeight = window.innerHeight - 250; // 为底部工具栏留出空间
                 
                 let width = img.width;
                 let height = img.height;
@@ -826,6 +925,7 @@
         
         // 关闭编辑模式
         closeEditBtn.addEventListener('click', closeEditMode);
+        cancelEditBtn.addEventListener('click', closeEditMode);
         
         function closeEditMode() {
             editMode.style.display = 'none';
@@ -946,6 +1046,11 @@
                 });
                 
                 updateScansList();
+                
+                // 如果没有扫描文档了，隐藏PDF提示
+                if (scans.length === 0) {
+                    pdfHint.style.display = 'none';
+                }
             }
         }
         
@@ -1019,18 +1124,19 @@
                 }
                 
                 // 保存PDF
-                pdf.save(`文档扫描_${new Date().toLocaleDateString()}.pdf`);
+                const fileName = `文档扫描_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`;
+                pdf.save(fileName);
                 
                 // 显示成功消息
                 setTimeout(() => {
                     loading.style.display = 'none';
-                    alert(`PDF已生成，包含 ${scans.length} 页文档`);
+                    alert(`PDF已生成并下载: ${fileName}\n包含 ${scans.length} 页文档`);
                 }, 1000);
                 
             } catch (error) {
                 console.error('生成PDF时出错:', error);
                 loading.style.display = 'none';
-                alert('生成PDF时出错，请重试');
+                alert('生成PDF时出错，请重试\n\n错误信息: ' + error.message);
             }
         }
         
@@ -1042,6 +1148,7 @@
                 scans = [];
                 updateScansList();
                 sidebar.classList.remove('open');
+                pdfHint.style.display = 'none';
             }
         });
         
@@ -1076,7 +1183,7 @@
         // 提示用户使用说明
         setTimeout(() => {
             if (scans.length === 0) {
-                alert('欢迎使用文档扫描仪！\n\n使用说明：\n1. 将文档置于取景框内\n2. 点击圆形按钮拍照\n3. 使用编辑工具优化图像\n4. 生成PDF合集\n\n请确保相机权限已开启。');
+                alert('欢迎使用文档扫描仪！\n\n使用说明：\n1. 将文档置于取景框内\n2. 点击圆形按钮拍照\n3. 使用底部编辑工具优化图像\n4. 点击"保存"完成编辑\n5. 拍摄多张后，点击"生成PDF"导出\n\n请确保相机权限已开启。');
             }
         }, 1500);
     </script>
