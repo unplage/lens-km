@@ -6,8 +6,7 @@
     <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(self)">
     <title>Lens Scanner Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 修复：确保PDF库正确加载 -->
-    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
@@ -306,6 +305,13 @@
             flex-direction: column;
             align-items: center;
             gap: 5px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* 确保按钮内所有元素不阻挡点击 */
+        .action-btn * {
+            pointer-events: none;
         }
         
         .btn-secondary {
@@ -382,6 +388,12 @@
             gap: 10px;
             border-top: 1px solid #333;
             flex-shrink: 0;
+        }
+        
+        /* 确保底部按钮可点击 */
+        .gallery-actions .action-btn {
+            position: relative;
+            z-index: 70;
         }
         
         .processing-overlay {
@@ -581,7 +593,6 @@
     <div class="camera-container" id="cameraContainer">
         <video id="video" autoplay playsinline muted></video>
         
-        <!-- 扫描动画覆盖层 -->
         <div class="scan-overlay" id="scanOverlay">
             <div class="corner-marker corner-tl"></div>
             <div class="corner-marker corner-tr"></div>
@@ -590,7 +601,6 @@
             <div class="scan-line"></div>
         </div>
         
-        <!-- 顶部控制栏 -->
         <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-30 bg-gradient-to-b from-black/70 to-transparent">
             <button onclick="toggleFlash()" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
@@ -601,13 +611,11 @@
             </button>
         </div>
         
-        <!-- 缩放控制 -->
         <div class="zoom-controls">
             <button class="zoom-btn active" onclick="setZoom(1)" id="zoom1">1x</button>
             <button class="zoom-btn" onclick="setZoom(2)" id="zoom2">2x</button>
         </div>
         
-        <!-- 模式选择器 -->
         <div class="mode-selector">
             <div class="mode-btn active" onclick="setMode('whiteboard', this)">白板</div>
             <div class="mode-btn" onclick="setMode('document', this)">文档</div>
@@ -615,28 +623,24 @@
             <div class="mode-btn" onclick="setMode('business', this)">名片</div>
         </div>
         
-        <!-- 上传按钮（备选方案） -->
-        <label class="upload-btn" for="fileInput">
+        <label class="upload-btn" for="fileInput" title="上传多张照片">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
         </label>
-        <input type="file" id="fileInput" accept="image/*" onchange="handleFileUpload(event)">
+        <!-- 添加 multiple 属性支持多选 -->
+        <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFileUpload(event)">
         
-        <!-- 快门按钮 -->
         <div class="shutter-btn" onclick="capture()">
             <div class="shutter-inner"></div>
         </div>
         
-        <!-- 相册按钮 -->
         <div class="gallery-btn" onclick="openGallery()">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
             <div class="gallery-count" id="galleryCount" style="display: none;">0</div>
         </div>
     </div>
     
-    <!-- 闪光效果 -->
     <div class="flash-overlay" id="flash"></div>
     
-    <!-- 错误提示 -->
     <div class="error-message" id="errorMessage">
         <div class="text-lg font-bold mb-2">无法访问相机</div>
         <div class="text-sm text-gray-300 mb-4" id="errorText">请允许相机权限或使用上传功能</div>
@@ -646,7 +650,6 @@
         </div>
     </div>
     
-    <!-- 预览/编辑界面 -->
     <div class="preview-container" id="previewContainer">
         <div class="preview-header">
             <button onclick="closePreview()" class="text-white font-medium px-2">取消</button>
@@ -707,7 +710,6 @@
         </div>
     </div>
     
-    <!-- 相册界面 -->
     <div class="gallery-modal" id="galleryModal">
         <div class="preview-header">
             <button onclick="closeGallery()" class="text-white">关闭</button>
@@ -717,11 +719,14 @@
         <div class="gallery-grid" id="galleryGrid"></div>
         <div class="gallery-actions">
             <button class="action-btn btn-secondary" onclick="deleteSelected()">删除选中</button>
-            <button class="action-btn btn-primary" onclick="exportPDF()">导出 PDF</button>
+            <!-- 修复：确保按钮整体可点击，添加明确的点击区域 -->
+            <button class="action-btn btn-primary" onclick="exportPDF()" style="position: relative; z-index: 71;">
+                <span>导出 PDF</span>
+                <span style="font-size: 11px; opacity: 0.8;">(<span id="exportCount">0</span>)</span>
+            </button>
         </div>
     </div>
     
-    <!-- 处理中提示 -->
     <div class="processing-overlay" id="processing">
         <div class="spinner"></div>
         <div class="text-lg font-medium">正在处理...</div>
@@ -734,6 +739,12 @@
     <canvas id="tempCanvas" class="hidden-canvas"></canvas>
 
     <script>
+        if (typeof PDFLib === 'undefined') {
+            console.error('PDFLib 库未加载！');
+        } else {
+            console.log('PDFLib 库已加载');
+        }
+
         let stream = null;
         let currentMode = 'whiteboard';
         let capturedImages = [];
@@ -745,8 +756,11 @@
         let videoTrack = null;
         let currentZoom = 1;
         let isCameraReady = false;
-        let isAllSelected = false; // 追踪全选状态
-        
+        let isAllSelected = false;
+        // 用于存储多文件上传的临时数组
+        let pendingUploads = [];
+        let currentUploadIndex = 0;
+
         async function initCamera() {
             hideError();
             
@@ -850,19 +864,122 @@
             initCamera();
         }
         
+        // 处理多文件上传
         function handleFileUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+            
+            console.log(`选择了 ${files.length} 个文件`);
+            
+            // 清空之前待处理的
+            pendingUploads = [];
+            currentUploadIndex = 0;
+            
+            // 过滤非图片文件
+            const imageFiles = files.filter(file => file.type.startsWith('image/'));
+            
+            if (imageFiles.length === 0) {
+                showToast('请选择图片文件');
+                event.target.value = '';
+                return;
+            }
+            
+            if (imageFiles.length !== files.length) {
+                showToast(`已过滤 ${files.length - imageFiles.length} 个非图片文件`);
+            }
+            
+            // 存储待上传的文件
+            pendingUploads = imageFiles;
+            
+            // 开始处理第一个
+            processNextUpload();
+            
+            // 清空input，允许重复选择相同文件
+            event.target.value = '';
+        }
+        
+        // 逐个处理上传的文件
+        function processNextUpload() {
+            if (currentUploadIndex >= pendingUploads.length) {
+                // 全部处理完成
+                showToast(`成功添加 ${pendingUploads.length} 张照片`);
+                pendingUploads = [];
+                currentUploadIndex = 0;
+                return;
+            }
+            
+            const file = pendingUploads[currentUploadIndex];
+            console.log(`处理第 ${currentUploadIndex + 1}/${pendingUploads.length} 个文件: ${file.name}`);
             
             const reader = new FileReader();
             reader.onload = (e) => {
                 currentImage = e.target.result;
                 currentFilter = 'original';
-                showPreview();
-                showToast('图片已加载');
+                
+                // 显示预览，但不自动关闭，让用户可以编辑
+                showPreviewForUpload();
+            };
+            reader.onerror = () => {
+                showToast(`读取失败: ${file.name}`);
+                currentUploadIndex++;
+                processNextUpload();
             };
             reader.readAsDataURL(file);
-            event.target.value = '';
+        }
+        
+        // 为上传显示预览，添加批量处理控制
+        function showPreviewForUpload() {
+            const container = document.getElementById('previewContainer');
+            const canvas = document.getElementById('previewCanvas');
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                
+                // 更新标题显示进度
+                const headerTitle = container.querySelector('.preview-header span');
+                headerTitle.textContent = `编辑 (${currentUploadIndex + 1}/${pendingUploads.length})`;
+                
+                resetCropCorners();
+            };
+            img.src = currentImage;
+            
+            container.classList.add('active');
+        }
+        
+        // 修改确认添加，支持批量上传流程
+        function confirmAndAdd() {
+            if (!currentImage) {
+                showToast('没有可保存的图片');
+                return;
+            }
+            
+            const canvas = document.getElementById('previewCanvas');
+            const finalImage = canvas.toDataURL('image/jpeg', 0.95);
+            
+            capturedImages.push({
+                id: Date.now(),
+                data: finalImage,
+                filter: currentFilter,
+                timestamp: new Date().toLocaleString()
+            });
+            
+            updateGalleryCount();
+            closePreview();
+            
+            // 如果是批量上传模式，继续下一个
+            if (pendingUploads.length > 0 && currentUploadIndex < pendingUploads.length) {
+                currentUploadIndex++;
+                // 稍微延迟，让用户看到提示
+                setTimeout(() => {
+                    processNextUpload();
+                }, 300);
+            } else {
+                showToast(`已添加，共 ${capturedImages.length} 张`);
+            }
         }
         
         async function toggleFlash() {
@@ -995,6 +1112,10 @@
             };
             img.src = currentImage;
             
+            // 重置标题
+            const headerTitle = container.querySelector('.preview-header span');
+            headerTitle.textContent = '编辑';
+            
             container.classList.add('active');
         }
         
@@ -1004,27 +1125,12 @@
             document.getElementById('cropFrame').classList.remove('active');
             currentImage = null;
             currentFilter = 'original';
-        }
-        
-        function confirmAndAdd() {
-            if (!currentImage) {
-                showToast('没有可保存的图片');
-                return;
+            
+            // 如果关闭预览时还有未处理的上传，清空队列
+            if (pendingUploads.length > 0) {
+                pendingUploads = [];
+                currentUploadIndex = 0;
             }
-            
-            const canvas = document.getElementById('previewCanvas');
-            const finalImage = canvas.toDataURL('image/jpeg', 0.95);
-            
-            capturedImages.push({
-                id: Date.now(),
-                data: finalImage,
-                filter: currentFilter,
-                timestamp: new Date().toLocaleString()
-            });
-            
-            updateGalleryCount();
-            closePreview();
-            showToast(`已添加，共 ${capturedImages.length} 张，继续拍摄`);
         }
         
         function applyFilter(filter, element) {
@@ -1321,7 +1427,6 @@
             const total = document.getElementById('galleryTotal');
             const selectAllBtn = document.getElementById('selectAllBtn');
             
-            // 重置全选状态
             isAllSelected = false;
             selectAllBtn.textContent = '全选';
             
@@ -1335,11 +1440,20 @@
                 item.onclick = () => {
                     item.classList.toggle('selected');
                     updateSelectAllButton();
+                    updateExportCount();
                 };
                 grid.appendChild(item);
             });
             
+            updateExportCount();
             modal.classList.add('active');
+        }
+        
+        function updateExportCount() {
+            const selected = document.querySelectorAll('.gallery-item.selected').length;
+            const total = capturedImages.length;
+            const count = selected > 0 ? selected : total;
+            document.getElementById('exportCount').textContent = count;
         }
         
         function updateSelectAllButton() {
@@ -1358,19 +1472,17 @@
         
         function toggleSelectAll() {
             const items = document.querySelectorAll('.gallery-item');
-            const selectAllBtn = document.getElementById('selectAllBtn');
             
             if (isAllSelected) {
-                // 取消全选
                 items.forEach(item => item.classList.remove('selected'));
                 isAllSelected = false;
-                selectAllBtn.textContent = '全选';
             } else {
-                // 全选
                 items.forEach(item => item.classList.add('selected'));
                 isAllSelected = true;
-                selectAllBtn.textContent = '取消全选';
             }
+            
+            updateSelectAllButton();
+            updateExportCount();
         }
         
         function closeGallery() {
@@ -1386,39 +1498,48 @@
             
             if (!confirm(`确定删除 ${selected.length} 个项目？`)) return;
             
-            // 获取选中的索引（从大到小排序，避免删除时索引变化）
             const indices = Array.from(selected).map(item => 
                 Array.from(item.parentNode.children).indexOf(item)
             ).sort((a, b) => b - a);
             
-            // 删除选中的图片
             indices.forEach(idx => capturedImages.splice(idx, 1));
             
-            // 刷新相册显示
             openGallery();
             updateGalleryCount();
             showToast(`已删除 ${selected.length} 个，剩余 ${capturedImages.length} 个`);
         }
         
-        // 修复：增强的exportPDF函数
+        // 修复：确保导出按钮点击事件正确绑定
         async function exportPDF() {
+            console.log('导出PDF按钮被点击');
+            
             try {
-                const selected = document.querySelectorAll('.gallery-item.selected');
-                
-                // 如果有选中的，导出选中的；否则导出全部
-                const imagesToExport = selected.length > 0 ? 
-                    Array.from(selected).map(item => {
-                        const idx = Array.from(item.parentNode.children).indexOf(item);
-                        return capturedImages[idx];
-                    }) : 
-                    [...capturedImages];
-                
-                if (imagesToExport.length === 0) {
-                    showToast('相册为空');
-                    return;
+                if (typeof PDFLib === 'undefined') {
+                    throw new Error('PDF库未加载，请检查网络连接');
                 }
                 
-                console.log(`准备导出 ${imagesToExport.length} 张图片到PDF`);
+                const selected = document.querySelectorAll('.gallery-item.selected');
+                console.log(`选中项目数: ${selected.length}`);
+                
+                let imagesToExport = [];
+                
+                if (selected.length > 0) {
+                    selected.forEach(item => {
+                        const idx = Array.from(item.parentNode.children).indexOf(item);
+                        if (capturedImages[idx]) {
+                            imagesToExport.push(capturedImages[idx]);
+                        }
+                    });
+                } else {
+                    imagesToExport = [...capturedImages];
+                }
+                
+                console.log(`准备导出 ${imagesToExport.length} 张图片`);
+                
+                if (imagesToExport.length === 0) {
+                    showToast('没有可导出的图片');
+                    return;
+                }
                 
                 if (imagesToExport.length > 200) {
                     if (!confirm(`您选择了 ${imagesToExport.length} 张图片，生成PDF可能需要较长时间，是否继续？`)) return;
@@ -1427,152 +1548,90 @@
                 const processing = document.getElementById('processing');
                 const processingText = document.getElementById('processingText');
                 processing.classList.add('active');
-                processingText.textContent = '正在准备PDF导出...';
+                processingText.textContent = '正在初始化...';
                 
-                // 检查PDF库是否可用
-                if (typeof PDFLib === 'undefined') {
-                    throw new Error('PDF库未正确加载，请刷新页面重试');
-                }
+                const { PDFDocument } = PDFLib;
+                const pdfDoc = await PDFDocument.create();
+                console.log('PDF文档已创建');
                 
-                // 创建新的PDF文档
-                const pdfDoc = await PDFLib.PDFDocument.create();
-                
-                // 设置PDF元数据
-                pdfDoc.setTitle(`扫描文档_${new Date().toLocaleDateString()}`);
-                pdfDoc.setAuthor('Lens Scanner Pro');
-                pdfDoc.setSubject('扫描文档');
-                pdfDoc.setKeywords(['扫描', '文档', '图片']);
-                pdfDoc.setProducer('Lens Scanner Pro');
-                pdfDoc.setCreator('Lens Scanner Pro');
-                
-                // 循环处理每张图片
                 for (let i = 0; i < imagesToExport.length; i++) {
-                    processingText.textContent = `正在处理第 ${i+1}/${imagesToExport.length} 张图片...`;
+                    processingText.textContent = `正在处理第 ${i+1}/${imagesToExport.length} 页...`;
                     
-                    // 每5张图片让出时间给UI更新
                     if (i % 5 === 0) {
-                        await new Promise(resolve => setTimeout(resolve, 0));
+                        await new Promise(resolve => setTimeout(resolve, 10));
                     }
                     
                     try {
-                        const imgData = imagesToExport[i].data;
+                        const img = await loadImage(imagesToExport[i].data);
                         
-                        // 判断图片格式
-                        let image;
-                        if (imgData.startsWith('data:image/jpeg')) {
-                            const jpegBytes = base64ToUint8Array(imgData.split(',')[1]);
-                            image = await pdfDoc.embedJpg(jpegBytes);
-                        } else if (imgData.startsWith('data:image/png')) {
-                            const pngBytes = base64ToUint8Array(imgData.split(',')[1]);
-                            image = await pdfDoc.embedPng(pngBytes);
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        
+                        const a4Width = 2480;
+                        const a4Height = 3508;
+                        
+                        const imgRatio = img.width / img.height;
+                        const a4Ratio = a4Width / a4Height;
+                        
+                        let drawWidth, drawHeight, offsetX, offsetY;
+                        
+                        if (imgRatio > a4Ratio) {
+                            drawWidth = a4Width;
+                            drawHeight = a4Width / imgRatio;
+                            offsetX = 0;
+                            offsetY = (a4Height - drawHeight) / 2;
                         } else {
-                            // 默认使用JPEG
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-                            const img = new Image();
-                            
-                            await new Promise((resolve, reject) => {
-                                img.onload = resolve;
-                                img.onerror = reject;
-                                img.src = imgData;
-                            });
-                            
-                            canvas.width = img.width;
-                            canvas.height = img.height;
-                            ctx.drawImage(img, 0, 0);
-                            
-                            const jpegData = canvas.toDataURL('image/jpeg', 0.9);
-                            const jpegBytes = base64ToUint8Array(jpegData.split(',')[1]);
-                            image = await pdfDoc.embedJpg(jpegBytes);
+                            drawHeight = a4Height;
+                            drawWidth = a4Height * imgRatio;
+                            offsetX = (a4Width - drawWidth) / 2;
+                            offsetY = 0;
                         }
                         
-                        // A4页面尺寸 (595.28 x 841.89 points)
-                        const pageWidth = 595.28;
-                        const pageHeight = 841.89;
+                        canvas.width = a4Width;
+                        canvas.height = a4Height;
                         
-                        // 计算图片在页面上的尺寸和位置
-                        const imgWidth = image.width;
-                        const imgHeight = image.height;
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(0, 0, a4Width, a4Height);
+                        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
                         
-                        // 计算缩放比例以适合页面
-                        const scale = Math.min(
-                            pageWidth / imgWidth,
-                            pageHeight / imgHeight
-                        );
+                        const jpegData = canvas.toDataURL('image/jpeg', 0.95);
+                        const jpegImage = await pdfDoc.embedJpg(jpegData.split(',')[1]);
                         
-                        const scaledWidth = imgWidth * scale;
-                        const scaledHeight = imgHeight * scale;
-                        
-                        // 计算居中位置
-                        const x = (pageWidth - scaledWidth) / 2;
-                        const y = (pageHeight - scaledHeight) / 2;
-                        
-                        // 添加页面
-                        const page = pdfDoc.addPage([pageWidth, pageHeight]);
-                        
-                        // 绘制图片
-                        page.drawImage(image, {
-                            x: x,
-                            y: y,
-                            width: scaledWidth,
-                            height: scaledHeight,
+                        const page = pdfDoc.addPage([595.28, 841.89]);
+                        page.drawImage(jpegImage, {
+                            x: 0, y: 0, width: 595.28, height: 841.89
                         });
                         
-                        // 添加页脚
-                        page.drawText(`第 ${i + 1} 页 / 共 ${imagesToExport.length} 页`, {
-                            x: 50,
-                            y: 30,
-                            size: 8,
-                            color: PDFLib.rgb(0.5, 0.5, 0.5),
-                        });
-                        
-                    } catch (err) {
-                        console.error(`处理第 ${i+1} 张图片时出错:`, err);
-                        // 跳过这张图片继续处理
-                        continue;
+                    } catch (imgErr) {
+                        console.error(`处理第 ${i+1} 张图片失败:`, imgErr);
                     }
                 }
                 
                 processingText.textContent = '正在生成PDF文件...';
-                
-                // 保存PDF
                 const pdfBytes = await pdfDoc.save();
                 
-                // 创建Blob并下载
                 const blob = new Blob([pdfBytes], { type: 'application/pdf' });
                 const url = URL.createObjectURL(blob);
-                
-                // 创建下载链接
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `扫描文档_${new Date().toLocaleDateString().replace(/\//g, '-')}_${imagesToExport.length}页.pdf`;
                 document.body.appendChild(a);
                 a.click();
-                
-                // 清理
-                setTimeout(() => {
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                }, 100);
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
                 
                 processing.classList.remove('active');
                 showToast(`PDF导出成功！共 ${imagesToExport.length} 页`);
                 
             } catch (err) {
                 console.error('PDF导出失败:', err);
-                document.getElementById('processing').classList.remove('active');
-                showToast('导出失败：' + (err.message || '未知错误'));
+                
+                const processing = document.getElementById('processing');
+                processing.classList.remove('active');
+                
+                showToast('导出失败：' + err.message);
+                alert('导出PDF失败：' + err.message);
             }
-        }
-        
-        // 辅助函数：Base64转Uint8Array
-        function base64ToUint8Array(base64) {
-            const binaryString = atob(base64);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-            return bytes;
         }
         
         function loadImage(src) {
@@ -1600,24 +1659,7 @@
         });
         
         document.addEventListener('DOMContentLoaded', () => {
-            // 检查PDF库是否加载
-            if (typeof PDFLib === 'undefined') {
-                console.warn('PDFLib未加载，尝试重新加载...');
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
-                script.onload = () => {
-                    console.log('PDFLib加载成功');
-                    setTimeout(initCamera, 100);
-                };
-                script.onerror = () => {
-                    console.error('PDFLib加载失败');
-                    showToast('PDF库加载失败，导出功能可能不可用');
-                    setTimeout(initCamera, 100);
-                };
-                document.head.appendChild(script);
-            } else {
-                setTimeout(initCamera, 100);
-            }
+            setTimeout(initCamera, 100);
             
             document.addEventListener('touchmove', (e) => {
                 if (e.target.closest('.gallery-grid') || e.target.closest('.filter-bar')) return;
@@ -1629,6 +1671,16 @@
                     setTimeout(initCamera, 500);
                 }
             });
+            
+            // 确保导出按钮事件绑定（双重保险）
+            const exportBtn = document.querySelector('.gallery-actions .btn-primary');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function(e) {
+                    console.log('导出按钮点击事件触发');
+                    e.stopPropagation();
+                    exportPDF();
+                });
+            }
         });
         
         document.addEventListener('keydown', (e) => {
