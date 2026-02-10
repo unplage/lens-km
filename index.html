@@ -309,7 +309,6 @@
             overflow: hidden;
         }
         
-        /* 确保按钮内所有元素不阻挡点击 */
         .action-btn * {
             pointer-events: none;
         }
@@ -390,7 +389,6 @@
             flex-shrink: 0;
         }
         
-        /* 确保底部按钮可点击 */
         .gallery-actions .action-btn {
             position: relative;
             z-index: 70;
@@ -589,7 +587,6 @@
 </head>
 <body>
 
-    <!-- 相机界面 -->
     <div class="camera-container" id="cameraContainer">
         <video id="video" autoplay playsinline muted></video>
         
@@ -626,7 +623,6 @@
         <label class="upload-btn" for="fileInput" title="上传多张照片">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
         </label>
-        <!-- 添加 multiple 属性支持多选 -->
         <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFileUpload(event)">
         
         <div class="shutter-btn" onclick="capture()">
@@ -653,7 +649,7 @@
     <div class="preview-container" id="previewContainer">
         <div class="preview-header">
             <button onclick="closePreview()" class="text-white font-medium px-2">取消</button>
-            <span class="text-white font-semibold">编辑</span>
+            <span class="text-white font-semibold" id="previewTitle">编辑</span>
             <button onclick="confirmAndAdd()" class="text-[#00ff88] font-semibold px-2">完成</button>
         </div>
         
@@ -705,7 +701,7 @@
             </button>
             <button class="action-btn btn-primary" onclick="confirmAndAdd()">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                <span>确认添加</span>
+                <span id="confirmBtnText">确认添加</span>
             </button>
         </div>
     </div>
@@ -719,8 +715,7 @@
         <div class="gallery-grid" id="galleryGrid"></div>
         <div class="gallery-actions">
             <button class="action-btn btn-secondary" onclick="deleteSelected()">删除选中</button>
-            <!-- 修复：确保按钮整体可点击，添加明确的点击区域 -->
-            <button class="action-btn btn-primary" onclick="exportPDF()" style="position: relative; z-index: 71;">
+            <button class="action-btn btn-primary" onclick="exportPDF()">
                 <span>导出 PDF</span>
                 <span style="font-size: 11px; opacity: 0.8;">(<span id="exportCount">0</span>)</span>
             </button>
@@ -757,9 +752,9 @@
         let currentZoom = 1;
         let isCameraReady = false;
         let isAllSelected = false;
-        // 用于存储多文件上传的临时数组
         let pendingUploads = [];
         let currentUploadIndex = 0;
+        let isBatchUploading = false; // 标记是否处于批量上传模式
 
         async function initCamera() {
             hideError();
@@ -890,6 +885,7 @@
             
             // 存储待上传的文件
             pendingUploads = imageFiles;
+            isBatchUploading = true;
             
             // 开始处理第一个
             processNextUpload();
@@ -902,9 +898,18 @@
         function processNextUpload() {
             if (currentUploadIndex >= pendingUploads.length) {
                 // 全部处理完成
+                console.log('批量上传完成');
                 showToast(`成功添加 ${pendingUploads.length} 张照片`);
                 pendingUploads = [];
                 currentUploadIndex = 0;
+                isBatchUploading = false;
+                
+                // 关闭预览界面，返回相机
+                document.getElementById('previewContainer').classList.remove('active');
+                isCropping = false;
+                document.getElementById('cropFrame').classList.remove('active');
+                currentImage = null;
+                currentFilter = 'original';
                 return;
             }
             
@@ -916,7 +921,7 @@
                 currentImage = e.target.result;
                 currentFilter = 'original';
                 
-                // 显示预览，但不自动关闭，让用户可以编辑
+                // 显示预览
                 showPreviewForUpload();
             };
             reader.onerror = () => {
@@ -927,7 +932,7 @@
             reader.readAsDataURL(file);
         }
         
-        // 为上传显示预览，添加批量处理控制
+        // 为上传显示预览
         function showPreviewForUpload() {
             const container = document.getElementById('previewContainer');
             const canvas = document.getElementById('previewCanvas');
@@ -940,8 +945,16 @@
                 ctx.drawImage(img, 0, 0);
                 
                 // 更新标题显示进度
-                const headerTitle = container.querySelector('.preview-header span');
+                const headerTitle = document.getElementById('previewTitle');
                 headerTitle.textContent = `编辑 (${currentUploadIndex + 1}/${pendingUploads.length})`;
+                
+                // 更新按钮文字
+                const confirmBtnText = document.getElementById('confirmBtnText');
+                if (currentUploadIndex < pendingUploads.length - 1) {
+                    confirmBtnText.textContent = '确认并继续';
+                } else {
+                    confirmBtnText.textContent = '确认完成';
+                }
                 
                 resetCropCorners();
             };
@@ -968,17 +981,34 @@
             });
             
             updateGalleryCount();
-            closePreview();
+            
+            console.log(`已保存第 ${currentUploadIndex + 1} 张，相册共 ${capturedImages.length} 张`);
             
             // 如果是批量上传模式，继续下一个
-            if (pendingUploads.length > 0 && currentUploadIndex < pendingUploads.length) {
+            if (isBatchUploading && currentUploadIndex < pendingUploads.length) {
                 currentUploadIndex++;
-                // 稍微延迟，让用户看到提示
-                setTimeout(() => {
-                    processNextUpload();
-                }, 300);
+                // 直接加载下一张，不关闭预览界面
+                processNextUpload();
             } else {
+                // 单张模式或批量完成，关闭预览
+                closePreview();
                 showToast(`已添加，共 ${capturedImages.length} 张`);
+            }
+        }
+        
+        function closePreview() {
+            document.getElementById('previewContainer').classList.remove('active');
+            isCropping = false;
+            document.getElementById('cropFrame').classList.remove('active');
+            currentImage = null;
+            currentFilter = 'original';
+            
+            // 如果关闭预览时还有未处理的上传，清空队列
+            if (isBatchUploading) {
+                console.log('用户取消，清空待上传队列');
+                pendingUploads = [];
+                currentUploadIndex = 0;
+                isBatchUploading = false;
             }
         }
         
@@ -1090,6 +1120,11 @@
             currentFilter = currentMode === 'whiteboard' ? 'whiteboard' : 
                           currentMode === 'document' ? 'document' : 'original';
             
+            // 相机拍摄不是批量模式
+            isBatchUploading = false;
+            pendingUploads = [];
+            currentUploadIndex = 0;
+            
             showPreview();
         }
         
@@ -1108,29 +1143,15 @@
                     applyFilter(currentFilter, document.querySelector(`.filter-btn[onclick*="${currentFilter}"]`));
                 }
                 
+                // 重置标题和按钮
+                document.getElementById('previewTitle').textContent = '编辑';
+                document.getElementById('confirmBtnText').textContent = '确认添加';
+                
                 resetCropCorners();
             };
             img.src = currentImage;
             
-            // 重置标题
-            const headerTitle = container.querySelector('.preview-header span');
-            headerTitle.textContent = '编辑';
-            
             container.classList.add('active');
-        }
-        
-        function closePreview() {
-            document.getElementById('previewContainer').classList.remove('active');
-            isCropping = false;
-            document.getElementById('cropFrame').classList.remove('active');
-            currentImage = null;
-            currentFilter = 'original';
-            
-            // 如果关闭预览时还有未处理的上传，清空队列
-            if (pendingUploads.length > 0) {
-                pendingUploads = [];
-                currentUploadIndex = 0;
-            }
         }
         
         function applyFilter(filter, element) {
@@ -1509,7 +1530,6 @@
             showToast(`已删除 ${selected.length} 个，剩余 ${capturedImages.length} 个`);
         }
         
-        // 修复：确保导出按钮点击事件正确绑定
         async function exportPDF() {
             console.log('导出PDF按钮被点击');
             
@@ -1671,16 +1691,6 @@
                     setTimeout(initCamera, 500);
                 }
             });
-            
-            // 确保导出按钮事件绑定（双重保险）
-            const exportBtn = document.querySelector('.gallery-actions .btn-primary');
-            if (exportBtn) {
-                exportBtn.addEventListener('click', function(e) {
-                    console.log('导出按钮点击事件触发');
-                    e.stopPropagation();
-                    exportPDF();
-                });
-            }
         });
         
         document.addEventListener('keydown', (e) => {
