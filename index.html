@@ -7,6 +7,8 @@
     <title>Lens Scanner Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <!-- 添加Tesseract.js库 -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
@@ -309,6 +311,7 @@
             overflow: hidden;
         }
         
+        /* 确保按钮内所有元素不阻挡点击 */
         .action-btn * {
             pointer-events: none;
         }
@@ -389,6 +392,7 @@
             flex-shrink: 0;
         }
         
+        /* 确保底部按钮可点击 */
         .gallery-actions .action-btn {
             position: relative;
             z-index: 70;
@@ -583,10 +587,160 @@
         #fileInput {
             display: none;
         }
+        
+        .progress-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            z-index: 51;
+        }
+        
+        /* OCR模态框样式 */
+        .ocr-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            z-index: 80;
+            display: none;
+            flex-direction: column;
+        }
+        
+        .ocr-modal.active {
+            display: flex;
+        }
+        
+        .ocr-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #1a1a1a;
+            overflow: hidden;
+        }
+        
+        .ocr-text-container {
+            flex: 1;
+            padding: 20px;
+            background: #0a0a0a;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        #ocrText {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            color: white;
+            border: none;
+            outline: none;
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            line-height: 1.5;
+            resize: none;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+        
+        #ocrText:focus {
+            border-color: #00ff88;
+        }
+        
+        .ocr-actions {
+            padding: 15px;
+            background: #000;
+            display: flex;
+            gap: 10px;
+            border-top: 1px solid #333;
+            flex-shrink: 0;
+        }
+        
+        .ocr-info {
+            padding: 10px 20px;
+            background: #2a2a2a;
+            color: #aaa;
+            font-size: 12px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .ocr-stats {
+            display: flex;
+            gap: 15px;
+        }
+        
+        .ocr-stat {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .ocr-lang-selector {
+            display: flex;
+            gap: 10px;
+            padding: 10px 20px;
+            background: #2a2a2a;
+            border-bottom: 1px solid #333;
+        }
+        
+        .lang-btn {
+            padding: 5px 12px;
+            background: #333;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .lang-btn.active {
+            background: #00ff88;
+            color: black;
+            border-color: #00ff88;
+        }
+        
+        /* 添加OCR模式选择器 */
+        .ocr-mode-selector {
+            display: flex;
+            gap: 10px;
+            padding: 10px 20px;
+            background: #2a2a2a;
+            border-bottom: 1px solid #333;
+            overflow-x: auto;
+        }
+        
+        .ocr-mode-btn {
+            padding: 5px 12px;
+            background: #333;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        
+        .ocr-mode-btn.active {
+            background: #00ff88;
+            color: black;
+            border-color: #00ff88;
+        }
     </style>
 </head>
 <body>
 
+    <!-- 相机界面 -->
     <div class="camera-container" id="cameraContainer">
         <video id="video" autoplay playsinline muted></video>
         
@@ -603,7 +757,7 @@
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
             </button>
             <div class="text-white font-semibold text-sm tracking-wide">Lens Scanner</div>
-            <button onclick="switchCamera()" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
+            <button onclick="switchCamera()" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-content-center text-white border border-white/20">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
             </button>
         </div>
@@ -618,11 +772,13 @@
             <div class="mode-btn" onclick="setMode('document', this)">文档</div>
             <div class="mode-btn" onclick="setMode('photo', this)">照片</div>
             <div class="mode-btn" onclick="setMode('business', this)">名片</div>
+            <div class="mode-btn" onclick="setMode('ocr', this)">OCR识别</div>
         </div>
         
         <label class="upload-btn" for="fileInput" title="上传多张照片">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
         </label>
+        <!-- 添加 multiple 属性支持多选 -->
         <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFileUpload(event)">
         
         <div class="shutter-btn" onclick="capture()">
@@ -647,9 +803,10 @@
     </div>
     
     <div class="preview-container" id="previewContainer">
+        <div class="progress-indicator" id="progressIndicator" style="display: none;"></div>
         <div class="preview-header">
-            <button onclick="closePreview()" class="text-white font-medium px-2">取消</button>
-            <span class="text-white font-semibold" id="previewTitle">编辑</span>
+            <button onclick="closePreview(true)" class="text-white font-medium px-2">取消</button>
+            <span class="text-white font-semibold">编辑</span>
             <button onclick="confirmAndAdd()" class="text-[#00ff88] font-semibold px-2">完成</button>
         </div>
         
@@ -699,10 +856,62 @@
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
                 <span>裁剪</span>
             </button>
+            <button class="action-btn btn-secondary" onclick="recognizeText()">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                <span>OCR识别</span>
+            </button>
             <button class="action-btn btn-primary" onclick="confirmAndAdd()">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                <span id="confirmBtnText">确认添加</span>
+                <span>确认添加</span>
             </button>
+        </div>
+    </div>
+    
+    <!-- OCR识别结果模态框 -->
+    <div class="ocr-modal" id="ocrModal">
+        <div class="preview-header">
+            <button onclick="closeOCR()" class="text-white font-medium px-2">返回</button>
+            <span class="text-white font-semibold">OCR文字识别</span>
+            <button onclick="copyOCRText()" class="text-[#00ff88] font-semibold px-2">复制</button>
+        </div>
+        
+        <div class="ocr-lang-selector">
+            <button class="lang-btn active" onclick="setOCRLang('chi_sim+eng')">中文+英文</button>
+            <button class="lang-btn" onclick="setOCRLang('chi_sim')">中文</button>
+            <button class="lang-btn" onclick="setOCRLang('eng')">英文</button>
+            <button class="lang-btn" onclick="setOCRLang('jpn')">日语</button>
+            <button class="lang-btn" onclick="setOCRLang('kor')">韩语</button>
+        </div>
+        
+        <div class="ocr-mode-selector">
+            <button class="ocr-mode-btn active" onclick="setOCRMode('standard')">标准识别</button>
+            <button class="ocr-mode-btn" onclick="setOCRMode('fast')">快速识别</button>
+            <button class="ocr-mode-btn" onclick="setOCRMode('accurate')">精确识别</button>
+        </div>
+        
+        <div class="ocr-content">
+            <div class="ocr-info">
+                <div>识别结果</div>
+                <div class="ocr-stats">
+                    <span class="ocr-stat" id="ocrCharCount">字符: 0</span>
+                    <span class="ocr-stat" id="ocrTime">用时: 0s</span>
+                </div>
+            </div>
+            
+            <div class="ocr-text-container">
+                <textarea id="ocrText" placeholder="识别结果将显示在这里..."></textarea>
+            </div>
+            
+            <div class="ocr-actions">
+                <button class="action-btn btn-secondary" onclick="saveOCRText()">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span>保存为TXT</span>
+                </button>
+                <button class="action-btn btn-primary" onclick="exportOCRToPDF()">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <span>导出为PDF</span>
+                </button>
+            </div>
         </div>
     </div>
     
@@ -715,7 +924,8 @@
         <div class="gallery-grid" id="galleryGrid"></div>
         <div class="gallery-actions">
             <button class="action-btn btn-secondary" onclick="deleteSelected()">删除选中</button>
-            <button class="action-btn btn-primary" onclick="exportPDF()">
+            <!-- 修复：确保按钮整体可点击，添加明确的点击区域 -->
+            <button class="action-btn btn-primary" id="exportPdfBtn" onclick="exportPDF()" style="position: relative; z-index: 71;">
                 <span>导出 PDF</span>
                 <span style="font-size: 11px; opacity: 0.8;">(<span id="exportCount">0</span>)</span>
             </button>
@@ -740,6 +950,13 @@
             console.log('PDFLib 库已加载');
         }
 
+        // 检查Tesseract.js库
+        if (typeof Tesseract === 'undefined') {
+            console.error('Tesseract.js 库未加载！');
+        } else {
+            console.log('Tesseract.js 库已加载');
+        }
+
         let stream = null;
         let currentMode = 'whiteboard';
         let capturedImages = [];
@@ -752,9 +969,17 @@
         let currentZoom = 1;
         let isCameraReady = false;
         let isAllSelected = false;
+        // 用于存储多文件上传的临时数组
         let pendingUploads = [];
         let currentUploadIndex = 0;
-        let isBatchUploading = false; // 标记是否处于批量上传模式
+        let isExporting = false; // 防止重复导出
+        
+        // OCR相关变量
+        let ocrLang = 'chi_sim+eng'; // 默认语言：简体中文+英文
+        let ocrMode = 'standard'; // 识别模式：standard, fast, accurate
+        let ocrWorker = null; // Tesseract工作器
+        let isOCRProcessing = false; // 防止重复OCR处理
+        let ocrResults = {}; // 存储OCR结果
 
         async function initCamera() {
             hideError();
@@ -798,7 +1023,7 @@
                 video.classList.add('active');
                 isCameraReady = true;
                 
-                if (currentMode === 'whiteboard' || currentMode === 'document') {
+                if (currentMode === 'whiteboard' || currentMode === 'document' || currentMode === 'ocr') {
                     document.getElementById('scanOverlay').classList.add('active');
                 }
                 
@@ -885,82 +1110,116 @@
             
             // 存储待上传的文件
             pendingUploads = imageFiles;
-            isBatchUploading = true;
             
-            // 开始处理第一个
-            processNextUpload();
+            // 直接批量处理所有文件，不显示预览
+            showToast(`开始处理 ${pendingUploads.length} 张照片...`);
+            batchProcessUploads();
             
             // 清空input，允许重复选择相同文件
             event.target.value = '';
         }
         
-        // 逐个处理上传的文件
-        function processNextUpload() {
-            if (currentUploadIndex >= pendingUploads.length) {
-                // 全部处理完成
-                console.log('批量上传完成');
-                showToast(`成功添加 ${pendingUploads.length} 张照片`);
-                pendingUploads = [];
-                currentUploadIndex = 0;
-                isBatchUploading = false;
+        // 批量处理上传的文件，不显示预览
+        async function batchProcessUploads() {
+            const processing = document.getElementById('processing');
+            const processingText = document.getElementById('processingText');
+            processing.classList.add('active');
+            
+            let successCount = 0;
+            
+            for (let i = 0; i < pendingUploads.length; i++) {
+                const file = pendingUploads[i];
+                processingText.textContent = `正在处理第 ${i + 1}/${pendingUploads.length} 张照片...`;
                 
-                // 关闭预览界面，返回相机
-                document.getElementById('previewContainer').classList.remove('active');
-                isCropping = false;
-                document.getElementById('cropFrame').classList.remove('active');
-                currentImage = null;
-                currentFilter = 'original';
-                return;
+                try {
+                    const imageData = await readImageFile(file);
+                    
+                    // 根据当前模式应用滤镜
+                    let filteredImage = imageData;
+                    if (currentMode === 'whiteboard' || currentMode === 'document') {
+                        filteredImage = await applyFilterToImage(imageData, currentMode);
+                    }
+                    
+                    capturedImages.push({
+                        id: Date.now() + i,
+                        data: filteredImage,
+                        filter: currentMode,
+                        timestamp: new Date().toLocaleString()
+                    });
+                    
+                    successCount++;
+                    
+                    // 每处理5张图片让出时间片，避免界面卡顿
+                    if (i % 5 === 0) {
+                        await new Promise(resolve => setTimeout(resolve, 0));
+                    }
+                    
+                } catch (error) {
+                    console.error(`处理文件 ${file.name} 失败:`, error);
+                }
             }
             
-            const file = pendingUploads[currentUploadIndex];
-            console.log(`处理第 ${currentUploadIndex + 1}/${pendingUploads.length} 个文件: ${file.name}`);
+            processing.classList.remove('active');
+            updateGalleryCount();
             
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                currentImage = e.target.result;
-                currentFilter = 'original';
-                
-                // 显示预览
-                showPreviewForUpload();
-            };
-            reader.onerror = () => {
-                showToast(`读取失败: ${file.name}`);
-                currentUploadIndex++;
-                processNextUpload();
-            };
-            reader.readAsDataURL(file);
+            // 清空上传队列
+            pendingUploads = [];
+            currentUploadIndex = 0;
+            
+            showToast(`成功添加 ${successCount} 张照片到相册`);
         }
         
-        // 为上传显示预览
-        function showPreviewForUpload() {
-            const container = document.getElementById('previewContainer');
-            const canvas = document.getElementById('previewCanvas');
-            const ctx = canvas.getContext('2d');
-            const img = new Image();
-            
-            img.onload = () => {
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.drawImage(img, 0, 0);
-                
-                // 更新标题显示进度
-                const headerTitle = document.getElementById('previewTitle');
-                headerTitle.textContent = `编辑 (${currentUploadIndex + 1}/${pendingUploads.length})`;
-                
-                // 更新按钮文字
-                const confirmBtnText = document.getElementById('confirmBtnText');
-                if (currentUploadIndex < pendingUploads.length - 1) {
-                    confirmBtnText.textContent = '确认并继续';
-                } else {
-                    confirmBtnText.textContent = '确认完成';
-                }
-                
-                resetCropCorners();
-            };
-            img.src = currentImage;
-            
-            container.classList.add('active');
+        // 读取图片文件为DataURL
+        function readImageFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+        
+        // 对图片应用滤镜
+        function applyFilterToImage(imageData, filterType) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    
+                    // 如果不需要滤镜，直接返回
+                    if (filterType === 'original' || filterType === 'photo' || filterType === 'ocr') {
+                        resolve(canvas.toDataURL('image/jpeg', 0.95));
+                        return;
+                    }
+                    
+                    // 应用滤镜
+                    const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageDataObj.data;
+                    
+                    switch(filterType) {
+                        case 'whiteboard':
+                            applyWhiteboardFilter(data, canvas.width, canvas.height);
+                            break;
+                        case 'document':
+                            applyDocumentFilter(data, canvas.width, canvas.height);
+                            break;
+                        case 'gray':
+                            applyGrayscale(data);
+                            break;
+                        case 'bw':
+                            applyBlackWhite(data);
+                            break;
+                    }
+                    
+                    ctx.putImageData(imageDataObj, 0, 0);
+                    resolve(canvas.toDataURL('image/jpeg', 0.95));
+                };
+                img.src = imageData;
+            });
         }
         
         // 修改确认添加，支持批量上传流程
@@ -981,34 +1240,17 @@
             });
             
             updateGalleryCount();
-            
-            console.log(`已保存第 ${currentUploadIndex + 1} 张，相册共 ${capturedImages.length} 张`);
+            closePreview();
             
             // 如果是批量上传模式，继续下一个
-            if (isBatchUploading && currentUploadIndex < pendingUploads.length) {
+            if (pendingUploads.length > 0 && currentUploadIndex < pendingUploads.length) {
                 currentUploadIndex++;
-                // 直接加载下一张，不关闭预览界面
-                processNextUpload();
+                // 稍微延迟，让用户看到提示
+                setTimeout(() => {
+                    processNextUpload();
+                }, 300);
             } else {
-                // 单张模式或批量完成，关闭预览
-                closePreview();
                 showToast(`已添加，共 ${capturedImages.length} 张`);
-            }
-        }
-        
-        function closePreview() {
-            document.getElementById('previewContainer').classList.remove('active');
-            isCropping = false;
-            document.getElementById('cropFrame').classList.remove('active');
-            currentImage = null;
-            currentFilter = 'original';
-            
-            // 如果关闭预览时还有未处理的上传，清空队列
-            if (isBatchUploading) {
-                console.log('用户取消，清空待上传队列');
-                pendingUploads = [];
-                currentUploadIndex = 0;
-                isBatchUploading = false;
             }
         }
         
@@ -1081,7 +1323,7 @@
             element.classList.add('active');
             
             const overlay = document.getElementById('scanOverlay');
-            if (mode === 'whiteboard' || mode === 'document') {
+            if (mode === 'whiteboard' || mode === 'document' || mode === 'ocr') {
                 overlay.classList.add('active');
             } else {
                 overlay.classList.remove('active');
@@ -1091,7 +1333,8 @@
                 'whiteboard': '白板模式：优化文字和图表',
                 'document': '文档模式：增强文字清晰度',
                 'photo': '照片模式：保持原始色彩',
-                'business': '名片模式：自动识别边框'
+                'business': '名片模式：自动识别边框',
+                'ocr': 'OCR模式：文字识别提取'
             };
             showToast(modes[mode]);
         }
@@ -1118,14 +1361,17 @@
             
             currentImage = canvas.toDataURL('image/jpeg', 1.0);
             currentFilter = currentMode === 'whiteboard' ? 'whiteboard' : 
-                          currentMode === 'document' ? 'document' : 'original';
-            
-            // 相机拍摄不是批量模式
-            isBatchUploading = false;
-            pendingUploads = [];
-            currentUploadIndex = 0;
+                          currentMode === 'document' ? 'document' : 
+                          currentMode === 'ocr' ? 'original' : 'original';
             
             showPreview();
+            
+            // 如果是OCR模式，自动开始识别
+            if (currentMode === 'ocr') {
+                setTimeout(() => {
+                    recognizeText();
+                }, 500);
+            }
         }
         
         function showPreview() {
@@ -1143,15 +1389,30 @@
                     applyFilter(currentFilter, document.querySelector(`.filter-btn[onclick*="${currentFilter}"]`));
                 }
                 
-                // 重置标题和按钮
-                document.getElementById('previewTitle').textContent = '编辑';
-                document.getElementById('confirmBtnText').textContent = '确认添加';
-                
                 resetCropCorners();
             };
             img.src = currentImage;
             
+            // 重置标题
+            const headerTitle = container.querySelector('.preview-header span');
+            headerTitle.textContent = '编辑';
+            
             container.classList.add('active');
+        }
+        
+        function closePreview(clearUploadQueue = false) {
+            document.getElementById('previewContainer').classList.remove('active');
+            document.getElementById('progressIndicator').style.display = 'none';
+            isCropping = false;
+            document.getElementById('cropFrame').classList.remove('active');
+            currentImage = null;
+            currentFilter = 'original';
+            
+            // 如果用户取消，清空上传队列
+            if (clearUploadQueue && pendingUploads.length > 0) {
+                pendingUploads = [];
+                currentUploadIndex = 0;
+            }
         }
         
         function applyFilter(filter, element) {
@@ -1530,10 +1791,22 @@
             showToast(`已删除 ${selected.length} 个，剩余 ${capturedImages.length} 个`);
         }
         
+        // 修复：确保导出按钮点击事件正确绑定
         async function exportPDF() {
             console.log('导出PDF按钮被点击');
             
+            // 防止重复点击
+            if (isExporting) {
+                console.log('正在导出中，请稍候...');
+                return;
+            }
+            
             try {
+                isExporting = true;
+                const exportBtn = document.getElementById('exportPdfBtn');
+                exportBtn.disabled = true;
+                exportBtn.style.opacity = '0.7';
+                
                 if (typeof PDFLib === 'undefined') {
                     throw new Error('PDF库未加载，请检查网络连接');
                 }
@@ -1558,11 +1831,19 @@
                 
                 if (imagesToExport.length === 0) {
                     showToast('没有可导出的图片');
+                    isExporting = false;
+                    exportBtn.disabled = false;
+                    exportBtn.style.opacity = '1';
                     return;
                 }
                 
                 if (imagesToExport.length > 200) {
-                    if (!confirm(`您选择了 ${imagesToExport.length} 张图片，生成PDF可能需要较长时间，是否继续？`)) return;
+                    if (!confirm(`您选择了 ${imagesToExport.length} 张图片，生成PDF可能需要较长时间，是否继续？`)) {
+                        isExporting = false;
+                        exportBtn.disabled = false;
+                        exportBtn.style.opacity = '1';
+                        return;
+                    }
                 }
                 
                 const processing = document.getElementById('processing');
@@ -1630,15 +1911,28 @@
                 processingText.textContent = '正在生成PDF文件...';
                 const pdfBytes = await pdfDoc.save();
                 
+                // 修复：使用更可靠的下载方法
                 const blob = new Blob([pdfBytes], { type: 'application/pdf' });
                 const url = URL.createObjectURL(blob);
+                
+                // 创建一次性的下载链接
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `扫描文档_${new Date().toLocaleDateString().replace(/\//g, '-')}_${imagesToExport.length}页.pdf`;
+                
+                // 使用一次性的事件处理
+                const clickHandler = () => {
+                    document.body.removeChild(a);
+                    // 延迟释放URL，确保下载完成
+                    setTimeout(() => {
+                        URL.revokeObjectURL(url);
+                    }, 1000);
+                };
+                
+                a.addEventListener('click', clickHandler, { once: true });
+                
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
                 
                 processing.classList.remove('active');
                 showToast(`PDF导出成功！共 ${imagesToExport.length} 页`);
@@ -1651,6 +1945,14 @@
                 
                 showToast('导出失败：' + err.message);
                 alert('导出PDF失败：' + err.message);
+            } finally {
+                // 恢复按钮状态
+                isExporting = false;
+                const exportBtn = document.getElementById('exportPdfBtn');
+                if (exportBtn) {
+                    exportBtn.disabled = false;
+                    exportBtn.style.opacity = '1';
+                }
             }
         }
         
@@ -1670,6 +1972,358 @@
             setTimeout(() => toast.classList.remove('show'), 2500);
         }
         
+        // OCR相关功能
+        
+        // 设置OCR语言
+        function setOCRLang(lang) {
+            ocrLang = lang;
+            // 更新按钮状态
+            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            showToast(`OCR语言已设置为: ${getLangName(lang)}`);
+        }
+        
+        // 设置OCR模式
+        function setOCRMode(mode) {
+            ocrMode = mode;
+            // 更新按钮状态
+            document.querySelectorAll('.ocr-mode-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            showToast(`OCR模式已设置为: ${getModeName(mode)}`);
+        }
+        
+        // 获取语言名称
+        function getLangName(lang) {
+            const langNames = {
+                'chi_sim+eng': '中文+英文',
+                'chi_sim': '中文',
+                'eng': '英文',
+                'jpn': '日语',
+                'kor': '韩语'
+            };
+            return langNames[lang] || lang;
+        }
+        
+        // 获取模式名称
+        function getModeName(mode) {
+            const modeNames = {
+                'standard': '标准识别',
+                'fast': '快速识别',
+                'accurate': '精确识别'
+            };
+            return modeNames[mode] || mode;
+        }
+        
+        // OCR文字识别主函数
+        async function recognizeText() {
+            if (!currentImage) {
+                showToast('请先选择或拍摄图片');
+                return;
+            }
+            
+            if (isOCRProcessing) {
+                showToast('正在识别中，请稍候...');
+                return;
+            }
+            
+            try {
+                isOCRProcessing = true;
+                const startTime = Date.now();
+                
+                // 显示处理中状态
+                const processing = document.getElementById('processing');
+                const processingText = document.getElementById('processingText');
+                processing.classList.add('active');
+                processingText.textContent = '正在初始化OCR引擎...';
+                
+                // 检查Tesseract.js是否可用
+                if (typeof Tesseract === 'undefined') {
+                    throw new Error('OCR引擎未加载，请检查网络连接');
+                }
+                
+                // 获取当前预览图片
+                const canvas = document.getElementById('previewCanvas');
+                
+                // 根据识别模式调整参数
+                let config = {
+                    lang: ocrLang,
+                    logger: (m) => {
+                        console.log('OCR进度:', m);
+                        if (m.status === 'recognizing text') {
+                            processingText.textContent = `正在识别文字... (${Math.round(m.progress * 100)}%)`;
+                        }
+                    }
+                };
+                
+                // 根据模式调整设置
+                if (ocrMode === 'fast') {
+                    config.tessedit_pageseg_mode = Tesseract.PSM.SINGLE_BLOCK;
+                    config.tessedit_char_whitelist = '';
+                } else if (ocrMode === 'accurate') {
+                    config.tessedit_pageseg_mode = Tesseract.PSM.AUTO;
+                    config.tessedit_char_blacklist = '';
+                } else {
+                    // 标准模式使用默认设置
+                    config.tessedit_pageseg_mode = Tesseract.PSM.AUTO_OSD;
+                }
+                
+                processingText.textContent = '正在识别图片中的文字...';
+                
+                // 执行OCR识别
+                const result = await Tesseract.recognize(
+                    canvas,
+                    ocrLang,
+                    config
+                );
+                
+                const endTime = Date.now();
+                const timeTaken = (endTime - startTime) / 1000;
+                
+                // 更新OCR结果
+                updateOCRResult(result.data.text, timeTaken);
+                
+                // 存储结果
+                ocrResults[currentImage] = {
+                    text: result.data.text,
+                    time: timeTaken,
+                    lang: ocrLang,
+                    mode: ocrMode,
+                    timestamp: new Date().toLocaleString()
+                };
+                
+                processing.classList.remove('active');
+                showToast(`OCR识别完成！用时 ${timeTaken.toFixed(2)} 秒`);
+                
+                // 打开OCR结果模态框
+                openOCR();
+                
+            } catch (err) {
+                console.error('OCR识别失败:', err);
+                
+                const processing = document.getElementById('processing');
+                processing.classList.remove('active');
+                
+                showToast('OCR识别失败：' + err.message);
+            } finally {
+                isOCRProcessing = false;
+            }
+        }
+        
+        // 更新OCR结果
+        function updateOCRResult(text, timeTaken) {
+            const ocrTextArea = document.getElementById('ocrText');
+            const charCount = document.getElementById('ocrCharCount');
+            const timeEl = document.getElementById('ocrTime');
+            
+            ocrTextArea.value = text;
+            charCount.textContent = `字符: ${text.length}`;
+            timeEl.textContent = `用时: ${timeTaken.toFixed(2)}s`;
+        }
+        
+        // 打开OCR结果模态框
+        function openOCR() {
+            document.getElementById('ocrModal').classList.add('active');
+        }
+        
+        // 关闭OCR结果模态框
+        function closeOCR() {
+            document.getElementById('ocrModal').classList.remove('active');
+        }
+        
+        // 复制OCR文本
+        function copyOCRText() {
+            const ocrTextArea = document.getElementById('ocrText');
+            ocrTextArea.select();
+            try {
+                document.execCommand('copy');
+                showToast('文本已复制到剪贴板');
+            } catch (err) {
+                // 使用现代API
+                navigator.clipboard.writeText(ocrTextArea.value)
+                    .then(() => showToast('文本已复制到剪贴板'))
+                    .catch(() => showToast('复制失败，请手动复制'));
+            }
+        }
+        
+        // 保存OCR文本为TXT文件
+        function saveOCRText() {
+            const ocrTextArea = document.getElementById('ocrText');
+            const text = ocrTextArea.value;
+            
+            if (!text.trim()) {
+                showToast('没有文本可保存');
+                return;
+            }
+            
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `OCR识别结果_${new Date().toLocaleDateString().replace(/\//g, '-')}.txt`;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showToast('文本已保存为TXT文件');
+        }
+        
+        // 将OCR结果导出为PDF
+        async function exportOCRToPDF() {
+            const ocrTextArea = document.getElementById('ocrText');
+            const text = ocrTextArea.value;
+            
+            if (!text.trim()) {
+                showToast('没有文本可导出');
+                return;
+            }
+            
+            try {
+                const processing = document.getElementById('processing');
+                const processingText = document.getElementById('processingText');
+                processing.classList.add('active');
+                processingText.textContent = '正在生成PDF...';
+                
+                const { PDFDocument, StandardFonts, rgb } = PDFLib;
+                const pdfDoc = await PDFDocument.create();
+                
+                // 设置PDF元数据
+                pdfDoc.setTitle('OCR识别结果');
+                pdfDoc.setAuthor('Lens Scanner Pro');
+                pdfDoc.setSubject('OCR文字识别');
+                pdfDoc.setKeywords(['OCR', '文字识别', '扫描']);
+                
+                // 添加页面 (A4: 595.28 x 841.89 points)
+                const page = pdfDoc.addPage([595.28, 841.89]);
+                const { width, height } = page.getSize();
+                
+                // 设置字体
+                const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                const fontSize = 12;
+                const lineHeight = fontSize * 1.2;
+                const margin = 50;
+                const maxWidth = width - 2 * margin;
+                
+                // 分割文本为行
+                const lines = splitTextIntoLines(text, font, fontSize, maxWidth);
+                
+                // 计算总高度
+                const totalHeight = lines.length * lineHeight;
+                let currentY = height - margin;
+                
+                // 添加标题
+                page.drawText('OCR识别结果', {
+                    x: margin,
+                    y: currentY,
+                    size: 16,
+                    font: font,
+                    color: rgb(0, 0, 0),
+                });
+                
+                currentY -= 30;
+                
+                // 添加元数据
+                const metaText = `识别时间: ${new Date().toLocaleString()} | 语言: ${getLangName(ocrLang)} | 模式: ${getModeName(ocrMode)}`;
+                page.drawText(metaText, {
+                    x: margin,
+                    y: currentY,
+                    size: 8,
+                    font: font,
+                    color: rgb(0.5, 0.5, 0.5),
+                });
+                
+                currentY -= 20;
+                
+                // 添加分割线
+                page.drawLine({
+                    start: { x: margin, y: currentY },
+                    end: { x: width - margin, y: currentY },
+                    thickness: 1,
+                    color: rgb(0.8, 0.8, 0.8),
+                });
+                
+                currentY -= 20;
+                
+                // 添加正文
+                for (const line of lines) {
+                    if (currentY < margin) {
+                        // 添加新页面
+                        const newPage = pdfDoc.addPage([595.28, 841.89]);
+                        currentY = height - margin;
+                        page = newPage;
+                    }
+                    
+                    page.drawText(line, {
+                        x: margin,
+                        y: currentY,
+                        size: fontSize,
+                        font: font,
+                        color: rgb(0, 0, 0),
+                    });
+                    
+                    currentY -= lineHeight;
+                }
+                
+                processingText.textContent = '正在保存PDF...';
+                const pdfBytes = await pdfDoc.save();
+                
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `OCR识别结果_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`;
+                
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                processing.classList.remove('active');
+                showToast('OCR结果已导出为PDF');
+                
+            } catch (err) {
+                console.error('导出OCR PDF失败:', err);
+                
+                const processing = document.getElementById('processing');
+                processing.classList.remove('active');
+                
+                showToast('导出失败：' + err.message);
+            }
+        }
+        
+        // 将文本分割为适合PDF显示的行
+        function splitTextIntoLines(text, font, fontSize, maxWidth) {
+            const lines = [];
+            const paragraphs = text.split('\n');
+            
+            for (const paragraph of paragraphs) {
+                const words = paragraph.split(' ');
+                let currentLine = '';
+                
+                for (const word of words) {
+                    const testLine = currentLine ? `${currentLine} ${word}` : word;
+                    const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+                    
+                    if (testWidth <= maxWidth) {
+                        currentLine = testLine;
+                    } else {
+                        if (currentLine) {
+                            lines.push(currentLine);
+                        }
+                        currentLine = word;
+                    }
+                }
+                
+                if (currentLine) {
+                    lines.push(currentLine);
+                }
+                lines.push(''); // 空行作为段落分隔
+            }
+            
+            return lines;
+        }
+        
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
@@ -1682,7 +2336,7 @@
             setTimeout(initCamera, 100);
             
             document.addEventListener('touchmove', (e) => {
-                if (e.target.closest('.gallery-grid') || e.target.closest('.filter-bar')) return;
+                if (e.target.closest('.gallery-grid') || e.target.closest('.filter-bar') || e.target.closest('.ocr-text-container')) return;
                 e.preventDefault();
             }, { passive: false });
             
@@ -1701,6 +2355,11 @@
             if (e.code === 'Enter' && document.getElementById('previewContainer').classList.contains('active')) {
                 e.preventDefault();
                 confirmAndAdd();
+            }
+            // 在OCR模态框中，Ctrl/Cmd + S 保存文本
+            if ((e.ctrlKey || e.metaKey) && e.key === 's' && document.getElementById('ocrModal').classList.contains('active')) {
+                e.preventDefault();
+                saveOCRText();
             }
         });
     </script>
