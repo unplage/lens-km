@@ -572,15 +572,31 @@
         #fileInput {
             display: none;
         }
+        
+        .debug-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            color: #00ff88;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 1000;
+            display: none;
+            max-width: 80%;
+            word-break: break-all;
+        }
     </style>
 </head>
 <body>
+
+    <div class="debug-info" id="debugInfo"></div>
 
     <!-- 相机界面 -->
     <div class="camera-container" id="cameraContainer">
         <video id="video" autoplay playsinline muted></video>
         
-        <!-- 扫描动画覆盖层 -->
         <div class="scan-overlay" id="scanOverlay">
             <div class="corner-marker corner-tl"></div>
             <div class="corner-marker corner-tr"></div>
@@ -589,7 +605,6 @@
             <div class="scan-line"></div>
         </div>
         
-        <!-- 顶部控制栏 -->
         <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-30 bg-gradient-to-b from-black/70 to-transparent">
             <button onclick="toggleFlash()" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
@@ -600,13 +615,11 @@
             </button>
         </div>
         
-        <!-- 缩放控制 -->
         <div class="zoom-controls">
             <button class="zoom-btn active" onclick="setZoom(1)" id="zoom1">1x</button>
             <button class="zoom-btn" onclick="setZoom(2)" id="zoom2">2x</button>
         </div>
         
-        <!-- 模式选择器 -->
         <div class="mode-selector">
             <div class="mode-btn active" onclick="setMode('whiteboard', this)">白板</div>
             <div class="mode-btn" onclick="setMode('document', this)">文档</div>
@@ -614,28 +627,23 @@
             <div class="mode-btn" onclick="setMode('business', this)">名片</div>
         </div>
         
-        <!-- 上传按钮（备选方案） -->
         <label class="upload-btn" for="fileInput">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
         </label>
         <input type="file" id="fileInput" accept="image/*" onchange="handleFileUpload(event)">
         
-        <!-- 快门按钮 -->
         <div class="shutter-btn" onclick="capture()">
             <div class="shutter-inner"></div>
         </div>
         
-        <!-- 相册按钮 -->
         <div class="gallery-btn" onclick="openGallery()">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
             <div class="gallery-count" id="galleryCount" style="display: none;">0</div>
         </div>
     </div>
     
-    <!-- 闪光效果 -->
     <div class="flash-overlay" id="flash"></div>
     
-    <!-- 错误提示 -->
     <div class="error-message" id="errorMessage">
         <div class="text-lg font-bold mb-2">无法访问相机</div>
         <div class="text-sm text-gray-300 mb-4" id="errorText">请允许相机权限或使用上传功能</div>
@@ -645,7 +653,6 @@
         </div>
     </div>
     
-    <!-- 预览/编辑界面 -->
     <div class="preview-container" id="previewContainer">
         <div class="preview-header">
             <button onclick="closePreview()" class="text-white font-medium px-2">取消</button>
@@ -706,7 +713,6 @@
         </div>
     </div>
     
-    <!-- 相册界面 -->
     <div class="gallery-modal" id="galleryModal">
         <div class="preview-header">
             <button onclick="closeGallery()" class="text-white">关闭</button>
@@ -716,11 +722,10 @@
         <div class="gallery-grid" id="galleryGrid"></div>
         <div class="gallery-actions">
             <button class="action-btn btn-secondary" onclick="deleteSelected()">删除选中</button>
-            <button class="action-btn btn-primary" onclick="exportPDF()">导出 PDF</button>
+            <button class="action-btn btn-primary" onclick="exportPDF()">导出 PDF (<span id="exportCount">0</span>)</button>
         </div>
     </div>
     
-    <!-- 处理中提示 -->
     <div class="processing-overlay" id="processing">
         <div class="spinner"></div>
         <div class="text-lg font-medium">正在处理...</div>
@@ -733,6 +738,14 @@
     <canvas id="tempCanvas" class="hidden-canvas"></canvas>
 
     <script>
+        // 检查PDF库是否加载
+        if (typeof PDFLib === 'undefined') {
+            console.error('PDFLib 库未加载！');
+            alert('PDF库加载失败，请检查网络连接');
+        } else {
+            console.log('PDFLib 库已加载');
+        }
+
         let stream = null;
         let currentMode = 'whiteboard';
         let capturedImages = [];
@@ -744,8 +757,15 @@
         let videoTrack = null;
         let currentZoom = 1;
         let isCameraReady = false;
-        let isAllSelected = false; // 追踪全选状态
+        let isAllSelected = false;
         
+        function log(msg) {
+            console.log(msg);
+            const debug = document.getElementById('debugInfo');
+            debug.style.display = 'block';
+            debug.innerHTML += msg + '<br>';
+        }
+
         async function initCamera() {
             hideError();
             
@@ -1320,7 +1340,6 @@
             const total = document.getElementById('galleryTotal');
             const selectAllBtn = document.getElementById('selectAllBtn');
             
-            // 重置全选状态
             isAllSelected = false;
             selectAllBtn.textContent = '全选';
             
@@ -1334,11 +1353,20 @@
                 item.onclick = () => {
                     item.classList.toggle('selected');
                     updateSelectAllButton();
+                    updateExportCount();
                 };
                 grid.appendChild(item);
             });
             
+            updateExportCount();
             modal.classList.add('active');
+        }
+        
+        function updateExportCount() {
+            const selected = document.querySelectorAll('.gallery-item.selected').length;
+            const total = capturedImages.length;
+            const count = selected > 0 ? selected : total;
+            document.getElementById('exportCount').textContent = count;
         }
         
         function updateSelectAllButton() {
@@ -1357,19 +1385,17 @@
         
         function toggleSelectAll() {
             const items = document.querySelectorAll('.gallery-item');
-            const selectAllBtn = document.getElementById('selectAllBtn');
             
             if (isAllSelected) {
-                // 取消全选
                 items.forEach(item => item.classList.remove('selected'));
                 isAllSelected = false;
-                selectAllBtn.textContent = '全选';
             } else {
-                // 全选
                 items.forEach(item => item.classList.add('selected'));
                 isAllSelected = true;
-                selectAllBtn.textContent = '取消全选';
             }
+            
+            updateSelectAllButton();
+            updateExportCount();
         }
         
         function closeGallery() {
@@ -1385,107 +1411,130 @@
             
             if (!confirm(`确定删除 ${selected.length} 个项目？`)) return;
             
-            // 获取选中的索引（从大到小排序，避免删除时索引变化）
             const indices = Array.from(selected).map(item => 
                 Array.from(item.parentNode.children).indexOf(item)
             ).sort((a, b) => b - a);
             
-            // 删除选中的图片
             indices.forEach(idx => capturedImages.splice(idx, 1));
             
-            // 刷新相册显示
             openGallery();
             updateGalleryCount();
             showToast(`已删除 ${selected.length} 个，剩余 ${capturedImages.length} 个`);
         }
         
         async function exportPDF() {
-            const selected = document.querySelectorAll('.gallery-item.selected');
-            
-            // 如果有选中的，导出选中的；否则导出全部
-            const imagesToExport = selected.length > 0 ? 
-                Array.from(selected).map(item => {
-                    const idx = Array.from(item.parentNode.children).indexOf(item);
-                    return capturedImages[idx];
-                }) : 
-                [...capturedImages]; // 创建副本，避免影响原数组
-            
-            if (imagesToExport.length === 0) {
-                showToast('相册为空');
-                return;
-            }
-            
-            console.log(`准备导出 ${imagesToExport.length} 张图片到PDF`);
-            
-            if (imagesToExport.length > 200) {
-                if (!confirm(`您选择了 ${imagesToExport.length} 张图片，生成PDF可能需要较长时间，是否继续？`)) return;
-            }
-            
-            const processing = document.getElementById('processing');
-            const processingText = document.getElementById('processingText');
-            processing.classList.add('active');
+            log('开始导出PDF...');
             
             try {
+                // 检查PDF库
+                if (typeof PDFLib === 'undefined') {
+                    throw new Error('PDF库未加载，请检查网络连接');
+                }
+                
+                const selected = document.querySelectorAll('.gallery-item.selected');
+                log(`选中项目数: ${selected.length}`);
+                
+                let imagesToExport = [];
+                
+                if (selected.length > 0) {
+                    // 导出选中的
+                    selected.forEach(item => {
+                        const idx = Array.from(item.parentNode.children).indexOf(item);
+                        if (capturedImages[idx]) {
+                            imagesToExport.push(capturedImages[idx]);
+                        }
+                    });
+                } else {
+                    // 导出全部
+                    imagesToExport = [...capturedImages];
+                }
+                
+                log(`准备导出 ${imagesToExport.length} 张图片`);
+                
+                if (imagesToExport.length === 0) {
+                    showToast('没有可导出的图片');
+                    return;
+                }
+                
+                if (imagesToExport.length > 200) {
+                    if (!confirm(`您选择了 ${imagesToExport.length} 张图片，生成PDF可能需要较长时间，是否继续？`)) return;
+                }
+                
+                const processing = document.getElementById('processing');
+                const processingText = document.getElementById('processingText');
+                processing.classList.add('active');
+                processingText.textContent = '正在初始化...';
+                
                 const { PDFDocument } = PDFLib;
                 const pdfDoc = await PDFDocument.create();
+                log('PDF文档已创建');
                 
                 for (let i = 0; i < imagesToExport.length; i++) {
                     processingText.textContent = `正在处理第 ${i+1}/${imagesToExport.length} 页...`;
+                    log(`处理第 ${i+1} 页`);
                     
                     // 每10张让出时间给UI更新
-                    if (i % 10 === 0) {
+                    if (i % 5 === 0) {
                         await new Promise(resolve => setTimeout(resolve, 10));
                     }
                     
-                    const img = await loadImage(imagesToExport[i].data);
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    // A4尺寸 300 DPI
-                    const a4Width = 2480;
-                    const a4Height = 3508;
-                    
-                    const imgRatio = img.width / img.height;
-                    const a4Ratio = a4Width / a4Height;
-                    
-                    let drawWidth, drawHeight, offsetX, offsetY;
-                    
-                    if (imgRatio > a4Ratio) {
-                        drawWidth = a4Width;
-                        drawHeight = a4Width / imgRatio;
-                        offsetX = 0;
-                        offsetY = (a4Height - drawHeight) / 2;
-                    } else {
-                        drawHeight = a4Height;
-                        drawWidth = a4Height * imgRatio;
-                        offsetX = (a4Width - drawWidth) / 2;
-                        offsetY = 0;
+                    try {
+                        const img = await loadImage(imagesToExport[i].data);
+                        log(`  图片加载成功: ${img.width}x${img.height}`);
+                        
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        
+                        const a4Width = 2480;
+                        const a4Height = 3508;
+                        
+                        const imgRatio = img.width / img.height;
+                        const a4Ratio = a4Width / a4Height;
+                        
+                        let drawWidth, drawHeight, offsetX, offsetY;
+                        
+                        if (imgRatio > a4Ratio) {
+                            drawWidth = a4Width;
+                            drawHeight = a4Width / imgRatio;
+                            offsetX = 0;
+                            offsetY = (a4Height - drawHeight) / 2;
+                        } else {
+                            drawHeight = a4Height;
+                            drawWidth = a4Height * imgRatio;
+                            offsetX = (a4Width - drawWidth) / 2;
+                            offsetY = 0;
+                        }
+                        
+                        canvas.width = a4Width;
+                        canvas.height = a4Height;
+                        
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(0, 0, a4Width, a4Height);
+                        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+                        
+                        const jpegData = canvas.toDataURL('image/jpeg', 0.95);
+                        log(`  正在嵌入PDF...`);
+                        const jpegImage = await pdfDoc.embedJpg(jpegData.split(',')[1]);
+                        
+                        const page = pdfDoc.addPage([595.28, 841.89]);
+                        page.drawImage(jpegImage, {
+                            x: 0, y: 0, width: 595.28, height: 841.89
+                        });
+                        log(`  第 ${i+1} 页完成`);
+                        
+                    } catch (imgErr) {
+                        log(`  第 ${i+1} 页失败: ${imgErr.message}`);
+                        console.error(`处理第 ${i+1} 张图片失败:`, imgErr);
+                        // 继续处理下一张，不中断整个流程
                     }
-                    
-                    canvas.width = a4Width;
-                    canvas.height = a4Height;
-                    
-                    // 白色背景
-                    ctx.fillStyle = 'white';
-                    ctx.fillRect(0, 0, a4Width, a4Height);
-                    ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-                    
-                    // 转换为JPEG并嵌入PDF
-                    const jpegData = canvas.toDataURL('image/jpeg', 0.95);
-                    const jpegImage = await pdfDoc.embedJpg(jpegData.split(',')[1]);
-                    
-                    // 添加页面 (A4: 595.28 x 841.89 points)
-                    const page = pdfDoc.addPage([595.28, 841.89]);
-                    page.drawImage(jpegImage, {
-                        x: 0, y: 0, width: 595.28, height: 841.89
-                    });
                 }
                 
                 processingText.textContent = '正在生成PDF文件...';
+                log('正在保存PDF...');
                 const pdfBytes = await pdfDoc.save();
-                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                log(`PDF大小: ${(pdfBytes.length / 1024 / 1024).toFixed(2)} MB`);
                 
-                // 下载文件
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -1497,11 +1546,17 @@
                 
                 processing.classList.remove('active');
                 showToast(`PDF导出成功！共 ${imagesToExport.length} 页`);
+                log('导出完成');
                 
             } catch (err) {
+                log(`导出失败: ${err.message}`);
                 console.error('PDF导出失败:', err);
+                
+                const processing = document.getElementById('processing');
                 processing.classList.remove('active');
+                
                 showToast('导出失败：' + err.message);
+                alert('导出PDF失败：' + err.message + '\n\n请检查控制台获取详细信息');
             }
         }
         
@@ -1549,7 +1604,7 @@
                 e.preventDefault();
                 capture();
             }
-            if (e.code === 'Enter' && document.getElementById('previewContainer').classList.contains('active')) {
+            if (e.code === 'Enter' && document.getElementById('previewContainer').classList.add('active')) {
                 e.preventDefault();
                 confirmAndAdd();
             }
