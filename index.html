@@ -1599,10 +1599,16 @@
             }
         }
         
-        function resetCropCorners() {
-            cropCorners = { tl: {x: 0.05, y: 0.05}, tr: {x: 0.95, y: 0.05}, bl: {x: 0.05, y: 0.95}, br: {x: 0.95, y: 0.95} };
-            if (isCropping) updateCropFrame();
-        }
+		function resetCropCorners() {
+			// 重置裁剪框为整个预览图像
+			cropCorners = { 
+				tl: {x: 0, y: 0}, 
+				tr: {x: 1, y: 0}, 
+				bl: {x: 0, y: 1}, 
+				br: {x: 1, y: 1} 
+			};
+			if (isCropping) updateCropFrame();
+		}
         
         function updateCropFrame() {
             const canvas = document.getElementById('previewCanvas');
