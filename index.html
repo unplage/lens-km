@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(self)">
     <title>Lens Scanner Pro</title>
-    <script src="https://cdn.tailwindcss.com "></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js "></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <!-- 添加Tesseract.js库 -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js "></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300 ;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
         * {
             -webkit-tap-highlight-color: transparent;
@@ -1867,7 +1867,7 @@
                         
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
-                        //这里可以改不同的dpi(150 DPI：1240 × 1754、200 DPI：1654 × 2338、250 DPI：2067 × 2923、300 DPI：2480 × 3508)来减小pdf导出！！！！！！！！！！！！！！！！！
+                        
                         const a4Width = 2480;
                         const a4Height = 3508;
                         
@@ -1895,7 +1895,7 @@
                         ctx.fillRect(0, 0, a4Width, a4Height);
                         ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
                         
-                        const jpegData = canvas.toDataURL('image/jpeg', 0.95);//降到0.8会小很多，这里可以改小一点来减少导出的PDF的大小！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
+                        const jpegData = canvas.toDataURL('image/jpeg', 0.95);
                         const jpegImage = await pdfDoc.embedJpg(jpegData.split(',')[1]);
                         
                         const page = pdfDoc.addPage([595.28, 841.89]);
