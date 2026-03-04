@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(self)">
     <title>Lens Scanner Pro</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <!-- Tesseract.js OCR库 -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+    <script src="https://cdn.tailwindcss.com "></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js "></script>
+    <!-- 添加Tesseract.js库 -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js "></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300 ;400;500;600;700&display=swap');
         
         * {
             -webkit-tap-highlight-color: transparent;
@@ -311,6 +311,7 @@
             overflow: hidden;
         }
         
+        /* 确保按钮内所有元素不阻挡点击 */
         .action-btn * {
             pointer-events: none;
         }
@@ -389,6 +390,12 @@
             gap: 10px;
             border-top: 1px solid #333;
             flex-shrink: 0;
+        }
+        
+        /* 确保底部按钮可点击 */
+        .gallery-actions .action-btn {
+            position: relative;
+            z-index: 70;
         }
         
         .processing-overlay {
@@ -702,6 +709,7 @@
             border-color: #00ff88;
         }
         
+        /* 添加OCR模式选择器 */
         .ocr-mode-selector {
             display: flex;
             gap: 10px;
@@ -770,6 +778,7 @@
         <label class="upload-btn" for="fileInput" title="上传多张照片">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
         </label>
+        <!-- 添加 multiple 属性支持多选 -->
         <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFileUpload(event)">
         
         <div class="shutter-btn" onclick="capture()">
@@ -915,6 +924,7 @@
         <div class="gallery-grid" id="galleryGrid"></div>
         <div class="gallery-actions">
             <button class="action-btn btn-secondary" onclick="deleteSelected()">删除选中</button>
+            <!-- 修复：确保按钮整体可点击，添加明确的点击区域 -->
             <button class="action-btn btn-primary" id="exportPdfBtn" onclick="exportPDF()" style="position: relative; z-index: 71;">
                 <span>导出 PDF</span>
                 <span style="font-size: 11px; opacity: 0.8;">(<span id="exportCount">0</span>)</span>
@@ -940,6 +950,7 @@
             console.log('PDFLib 库已加载');
         }
 
+        // 检查Tesseract.js库
         if (typeof Tesseract === 'undefined') {
             console.error('Tesseract.js 库未加载！');
         } else {
@@ -958,17 +969,18 @@
         let currentZoom = 1;
         let isCameraReady = false;
         let isAllSelected = false;
+        // 用于存储多文件上传的临时数组
         let pendingUploads = [];
         let currentUploadIndex = 0;
-        let isExporting = false;
+        let isExporting = false; // 防止重复导出
         
         // OCR相关变量
-        let ocrLang = 'chi_sim+eng';
-        let ocrMode = 'standard';
-        let isOCRProcessing = false;
-        let ocrResults = {};
+        let ocrLang = 'chi_sim+eng'; // 默认语言：简体中文+英文
+        let ocrMode = 'standard'; // 识别模式：standard, fast, accurate
+        let ocrWorker = null; // Tesseract工作器
+        let isOCRProcessing = false; // 防止重复OCR处理
+        let ocrResults = {}; // 存储OCR结果
 
-        // 相机初始化函数（与之前相同）
         async function initCamera() {
             hideError();
             
@@ -1022,7 +1034,7 @@
                 handleCameraError(err);
             }
         }
-
+        
         function handleCameraError(err) {
             let title = '无法访问相机';
             let message = '请检查相机权限设置';
@@ -1043,7 +1055,7 @@
             
             showError(title, message);
         }
-
+        
         async function retryWithDefaultConstraints() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -1057,29 +1069,33 @@
                 showError('相机访问失败', '无法启动相机，请使用上传功能代替');
             }
         }
-
+        
         function showError(title, text) {
             document.getElementById('errorMessage').classList.add('active');
             document.querySelector('#errorMessage .text-lg').textContent = title;
             document.getElementById('errorText').textContent = text;
         }
-
+        
         function hideError() {
             document.getElementById('errorMessage').classList.remove('active');
         }
-
+        
         function retryCamera() {
             initCamera();
         }
-
-        // 文件上传处理
+        
+        // 处理多文件上传
         function handleFileUpload(event) {
             const files = Array.from(event.target.files);
             if (files.length === 0) return;
             
+            console.log(`选择了 ${files.length} 个文件`);
+            
+            // 清空之前待处理的
             pendingUploads = [];
             currentUploadIndex = 0;
             
+            // 过滤非图片文件
             const imageFiles = files.filter(file => file.type.startsWith('image/'));
             
             if (imageFiles.length === 0) {
@@ -1092,14 +1108,18 @@
                 showToast(`已过滤 ${files.length - imageFiles.length} 个非图片文件`);
             }
             
+            // 存储待上传的文件
             pendingUploads = imageFiles;
             
+            // 直接批量处理所有文件，不显示预览
             showToast(`开始处理 ${pendingUploads.length} 张照片...`);
             batchProcessUploads();
             
+            // 清空input，允许重复选择相同文件
             event.target.value = '';
         }
-
+        
+        // 批量处理上传的文件，不显示预览
         async function batchProcessUploads() {
             const processing = document.getElementById('processing');
             const processingText = document.getElementById('processingText');
@@ -1114,6 +1134,7 @@
                 try {
                     const imageData = await readImageFile(file);
                     
+                    // 根据当前模式应用滤镜
                     let filteredImage = imageData;
                     if (currentMode === 'whiteboard' || currentMode === 'document') {
                         filteredImage = await applyFilterToImage(imageData, currentMode);
@@ -1128,6 +1149,7 @@
                     
                     successCount++;
                     
+                    // 每处理5张图片让出时间片，避免界面卡顿
                     if (i % 5 === 0) {
                         await new Promise(resolve => setTimeout(resolve, 0));
                     }
@@ -1140,12 +1162,14 @@
             processing.classList.remove('active');
             updateGalleryCount();
             
+            // 清空上传队列
             pendingUploads = [];
             currentUploadIndex = 0;
             
             showToast(`成功添加 ${successCount} 张照片到相册`);
         }
-
+        
+        // 读取图片文件为DataURL
         function readImageFile(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -1154,7 +1178,8 @@
                 reader.readAsDataURL(file);
             });
         }
-
+        
+        // 对图片应用滤镜
         function applyFilterToImage(imageData, filterType) {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -1165,11 +1190,13 @@
                     canvas.height = img.height;
                     ctx.drawImage(img, 0, 0);
                     
+                    // 如果不需要滤镜，直接返回
                     if (filterType === 'original' || filterType === 'photo' || filterType === 'ocr') {
                         resolve(canvas.toDataURL('image/jpeg', 0.95));
                         return;
                     }
                     
+                    // 应用滤镜
                     const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
                     const data = imageDataObj.data;
                     
@@ -1194,7 +1221,8 @@
                 img.src = imageData;
             });
         }
-
+        
+        // 修改确认添加，支持批量上传流程
         function confirmAndAdd() {
             if (!currentImage) {
                 showToast('没有可保存的图片');
@@ -1214,8 +1242,10 @@
             updateGalleryCount();
             closePreview();
             
+            // 如果是批量上传模式，继续下一个
             if (pendingUploads.length > 0 && currentUploadIndex < pendingUploads.length) {
                 currentUploadIndex++;
+                // 稍微延迟，让用户看到提示
                 setTimeout(() => {
                     processNextUpload();
                 }, 300);
@@ -1223,7 +1253,7 @@
                 showToast(`已添加，共 ${capturedImages.length} 张`);
             }
         }
-
+        
         async function toggleFlash() {
             if (!videoTrack) {
                 showToast('相机未就绪');
@@ -1244,7 +1274,7 @@
                 showToast('闪光灯控制失败');
             }
         }
-
+        
         async function switchCamera() {
             if (!stream) {
                 showToast('相机未启动');
@@ -1270,7 +1300,7 @@
                 initCamera();
             }
         }
-
+        
         function setZoom(level) {
             currentZoom = level;
             document.querySelectorAll('.zoom-btn').forEach(btn => btn.classList.remove('active'));
@@ -1286,7 +1316,7 @@
                 showToast(`${level}x 数码变焦`);
             }
         }
-
+        
         function setMode(mode, element) {
             currentMode = mode;
             document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
@@ -1308,7 +1338,7 @@
             };
             showToast(modes[mode]);
         }
-
+        
         function capture() {
             if (!isCameraReady) {
                 showToast('相机未就绪，请使用上传功能');
@@ -1336,13 +1366,14 @@
             
             showPreview();
             
+            // 如果是OCR模式，自动开始识别
             if (currentMode === 'ocr') {
                 setTimeout(() => {
                     recognizeText();
                 }, 500);
             }
         }
-
+        
         function showPreview() {
             const container = document.getElementById('previewContainer');
             const canvas = document.getElementById('previewCanvas');
@@ -1362,12 +1393,13 @@
             };
             img.src = currentImage;
             
+            // 重置标题
             const headerTitle = container.querySelector('.preview-header span');
             headerTitle.textContent = '编辑';
             
             container.classList.add('active');
         }
-
+        
         function closePreview(clearUploadQueue = false) {
             document.getElementById('previewContainer').classList.remove('active');
             document.getElementById('progressIndicator').style.display = 'none';
@@ -1376,12 +1408,13 @@
             currentImage = null;
             currentFilter = 'original';
             
+            // 如果用户取消，清空上传队列
             if (clearUploadQueue && pendingUploads.length > 0) {
                 pendingUploads = [];
                 currentUploadIndex = 0;
             }
         }
-
+        
         function applyFilter(filter, element) {
             if (!currentImage) return;
             
@@ -1425,7 +1458,7 @@
             };
             img.src = currentImage;
         }
-
+        
         function applyWhiteboardFilter(data, width, height) {
             let totalBrightness = 0;
             for (let i = 0; i < data.length; i += 4) {
@@ -1450,7 +1483,7 @@
             }
             sharpenImage(data, width, height, 0.3);
         }
-
+        
         function applyDocumentFilter(data, width, height) {
             const contrast = 1.4;
             const intercept = 128 * (1 - contrast);
@@ -1462,14 +1495,14 @@
             }
             sharpenImage(data, width, height, 0.5);
         }
-
+        
         function applyGrayscale(data) {
             for (let i = 0; i < data.length; i += 4) {
                 const gray = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
                 data[i] = data[i+1] = data[i+2] = gray;
             }
         }
-
+        
         function applyBlackWhite(data) {
             for (let i = 0; i < data.length; i += 4) {
                 const gray = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
@@ -1477,7 +1510,7 @@
                 data[i] = data[i+1] = data[i+2] = val;
             }
         }
-
+        
         function applyMagicColor(data) {
             for (let i = 0; i < data.length; i += 4) {
                 const max = Math.max(data[i], data[i+1], data[i+2]);
@@ -1489,7 +1522,7 @@
                 }
             }
         }
-
+        
         function sharpenImage(data, width, height, strength) {
             const copy = new Uint8ClampedArray(data);
             const w = width;
@@ -1504,7 +1537,7 @@
                 }
             }
         }
-
+        
         function rotateImage() {
             const canvas = document.getElementById('previewCanvas');
             const temp = document.getElementById('tempCanvas');
@@ -1526,7 +1559,7 @@
             resetCropCorners();
             showToast('已旋转90°');
         }
-
+        
         function toggleCrop() {
             isCropping = !isCropping;
             const frame = document.getElementById('cropFrame');
@@ -1534,60 +1567,70 @@
             if (isCropping) {
                 frame.classList.add('active');
                 updateCropFrame();
-                initCropDrag(); // 重新绑定拖动事件
+                initCropDrag();
                 showToast('拖动角落调整裁剪区域');
             } else {
                 frame.classList.remove('active');
                 applyCrop();
             }
         }
-
+        
         function resetCropCorners() {
             cropCorners = { tl: {x: 0.05, y: 0.05}, tr: {x: 0.95, y: 0.05}, bl: {x: 0.05, y: 0.95}, br: {x: 0.95, y: 0.95} };
             if (isCropping) updateCropFrame();
         }
-
-        // ================= 修复后的裁剪相关函数 =================
+        
+        function updateCropFrame() {
+            const canvas = document.getElementById('previewCanvas');
+            const container = document.getElementById('previewCanvasContainer');
+            const frame = document.getElementById('cropFrame');
+            const rect = canvas.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            
+            const left = rect.left - containerRect.left + cropCorners.tl.x * rect.width;
+            const top = rect.top - containerRect.top + cropCorners.tl.y * rect.height;
+            const width = (cropCorners.tr.x - cropCorners.tl.x) * rect.width;
+            const height = (cropCorners.bl.y - cropCorners.tl.y) * rect.height;
+            
+            frame.style.left = left + 'px';
+            frame.style.top = top + 'px';
+            frame.style.width = width + 'px';
+            frame.style.height = height + 'px';
+        }
+        
         function initCropDrag() {
             const handles = document.querySelectorAll('.crop-handle');
             
-            // 移除旧监听器，避免重复绑定
             handles.forEach(handle => {
-                handle.removeEventListener('touchstart', handleDragStart);
-                handle.removeEventListener('mousedown', handleDragStart);
+                handle.addEventListener('touchstart', handleDragStart, {passive: false});
+                handle.addEventListener('mousedown', handleDragStart);
             });
-
+            
             function handleDragStart(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 activeHandle = e.target.dataset.corner;
-
-                document.addEventListener('touchmove', handleDrag, { passive: false });
+                
+                document.addEventListener('touchmove', handleDrag, {passive: false});
                 document.addEventListener('touchend', handleDragEnd);
                 document.addEventListener('mousemove', handleDrag);
                 document.addEventListener('mouseup', handleDragEnd);
             }
-
+            
             function handleDrag(e) {
                 if (!activeHandle) return;
                 e.preventDefault();
-
+                
                 const canvas = document.getElementById('previewCanvas');
                 const rect = canvas.getBoundingClientRect();
-                const container = document.getElementById('previewCanvasContainer');
-                const containerRect = container.getBoundingClientRect();
-
+                
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-                // 将屏幕坐标转换为相对于canvas左上角的归一化坐标（0-1）
-                let x = (clientX - rect.left) / rect.width;
-                let y = (clientY - rect.top) / rect.height;
-
-                x = Math.max(0, Math.min(1, x));
-                y = Math.max(0, Math.min(1, y));
-
-                switch (activeHandle) {
+                
+                const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+                
+                switch(activeHandle) {
                     case 'tl':
                         cropCorners.tl.x = Math.min(x, cropCorners.tr.x - 0.05);
                         cropCorners.tl.y = Math.min(y, cropCorners.bl.y - 0.05);
@@ -1605,10 +1648,10 @@
                         cropCorners.br.y = Math.max(y, cropCorners.tr.y + 0.05);
                         break;
                 }
-
+                
                 updateCropFrame();
             }
-
+            
             function handleDragEnd() {
                 activeHandle = null;
                 document.removeEventListener('touchmove', handleDrag);
@@ -1616,35 +1659,8 @@
                 document.removeEventListener('mousemove', handleDrag);
                 document.removeEventListener('mouseup', handleDragEnd);
             }
-
-            handles.forEach(handle => {
-                handle.addEventListener('touchstart', handleDragStart, { passive: false });
-                handle.addEventListener('mousedown', handleDragStart);
-            });
         }
-
-        function updateCropFrame() {
-            const canvas = document.getElementById('previewCanvas');
-            const container = document.getElementById('previewCanvasContainer');
-            const frame = document.getElementById('cropFrame');
-            
-            if (!canvas || !container || !frame) return;
-
-            const canvasRect = canvas.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-
-            const left = canvasRect.left - containerRect.left + cropCorners.tl.x * canvasRect.width;
-            const top = canvasRect.top - containerRect.top + cropCorners.tl.y * canvasRect.height;
-            const width = (cropCorners.tr.x - cropCorners.tl.x) * canvasRect.width;
-            const height = (cropCorners.bl.y - cropCorners.tl.y) * canvasRect.height;
-
-            frame.style.left = left + 'px';
-            frame.style.top = top + 'px';
-            frame.style.width = width + 'px';
-            frame.style.height = height + 'px';
-        }
-        // =======================================================
-
+        
         function applyCrop() {
             const canvas = document.getElementById('previewCanvas');
             const temp = document.getElementById('tempCanvas');
@@ -1674,7 +1690,7 @@
             currentImage = canvas.toDataURL('image/jpeg', 1.0);
             showToast('已裁剪');
         }
-
+        
         function updateGalleryCount() {
             const count = document.getElementById('galleryCount');
             const total = capturedImages.length;
@@ -1686,7 +1702,7 @@
                 count.style.display = 'none';
             }
         }
-
+        
         function openGallery() {
             const modal = document.getElementById('galleryModal');
             const grid = document.getElementById('galleryGrid');
@@ -1714,14 +1730,14 @@
             updateExportCount();
             modal.classList.add('active');
         }
-
+        
         function updateExportCount() {
             const selected = document.querySelectorAll('.gallery-item.selected').length;
             const total = capturedImages.length;
             const count = selected > 0 ? selected : total;
             document.getElementById('exportCount').textContent = count;
         }
-
+        
         function updateSelectAllButton() {
             const selectAllBtn = document.getElementById('selectAllBtn');
             const items = document.querySelectorAll('.gallery-item');
@@ -1735,7 +1751,7 @@
                 selectAllBtn.textContent = '全选';
             }
         }
-
+        
         function toggleSelectAll() {
             const items = document.querySelectorAll('.gallery-item');
             
@@ -1750,11 +1766,11 @@
             updateSelectAllButton();
             updateExportCount();
         }
-
+        
         function closeGallery() {
             document.getElementById('galleryModal').classList.remove('active');
         }
-
+        
         function deleteSelected() {
             const selected = document.querySelectorAll('.gallery-item.selected');
             if (selected.length === 0) {
@@ -1774,11 +1790,12 @@
             updateGalleryCount();
             showToast(`已删除 ${selected.length} 个，剩余 ${capturedImages.length} 个`);
         }
-
-        // ---------- 优化后的导出PDF函数 ----------
+        
+        // 修复：确保导出按钮点击事件正确绑定
         async function exportPDF() {
             console.log('导出PDF按钮被点击');
             
+            // 防止重复点击
             if (isExporting) {
                 console.log('正在导出中，请稍候...');
                 return;
@@ -1836,58 +1853,54 @@
                 
                 const { PDFDocument } = PDFLib;
                 const pdfDoc = await PDFDocument.create();
-                
-                // 压缩参数
-                const JPEG_QUALITY = 0.8;          // JPEG质量
-                const TARGET_DPI = 150;              // 目标输出 DPI
-                const A4_WIDTH_PX = Math.round(8.27 * TARGET_DPI);
-                const A4_HEIGHT_PX = Math.round(11.69 * TARGET_DPI);
+                console.log('PDF文档已创建');
                 
                 for (let i = 0; i < imagesToExport.length; i++) {
                     processingText.textContent = `正在处理第 ${i+1}/${imagesToExport.length} 页...`;
                     
-                    if (i % 5 === 0 && i > 0) {
+                    if (i % 5 === 0) {
                         await new Promise(resolve => setTimeout(resolve, 10));
                     }
                     
                     try {
                         const img = await loadImage(imagesToExport[i].data);
                         
-                        let drawWidth, drawHeight;
-                        const imgRatio = img.width / img.height;
-                        const targetRatio = A4_WIDTH_PX / A4_HEIGHT_PX;
-                        
-                        if (imgRatio > targetRatio) {
-                            drawWidth = A4_WIDTH_PX;
-                            drawHeight = Math.round(A4_WIDTH_PX / imgRatio);
-                        } else {
-                            drawHeight = A4_HEIGHT_PX;
-                            drawWidth = Math.round(A4_HEIGHT_PX * imgRatio);
-                        }
-                        
-                        if (img.width < drawWidth || img.height < drawHeight) {
-                            drawWidth = img.width;
-                            drawHeight = img.height;
-                        }
-                        
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
-                        canvas.width = drawWidth;
-                        canvas.height = drawHeight;
+                        //这里可以改不同的dpi(150 DPI：1240 × 1754、200 DPI：1654 × 2338、250 DPI：2067 × 2923、300 DPI：2480 × 3508)来减小pdf导出！！！！！！！！！！！！！！！！！
+                        const a4Width = 2480;
+                        const a4Height = 3508;
+                        
+                        const imgRatio = img.width / img.height;
+                        const a4Ratio = a4Width / a4Height;
+                        
+                        let drawWidth, drawHeight, offsetX, offsetY;
+                        
+                        if (imgRatio > a4Ratio) {
+                            drawWidth = a4Width;
+                            drawHeight = a4Width / imgRatio;
+                            offsetX = 0;
+                            offsetY = (a4Height - drawHeight) / 2;
+                        } else {
+                            drawHeight = a4Height;
+                            drawWidth = a4Height * imgRatio;
+                            offsetX = (a4Width - drawWidth) / 2;
+                            offsetY = 0;
+                        }
+                        
+                        canvas.width = a4Width;
+                        canvas.height = a4Height;
                         
                         ctx.fillStyle = 'white';
-                        ctx.fillRect(0, 0, drawWidth, drawHeight);
-                        ctx.drawImage(img, 0, 0, drawWidth, drawHeight);
+                        ctx.fillRect(0, 0, a4Width, a4Height);
+                        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
                         
-                        const jpegData = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+                        const jpegData = canvas.toDataURL('image/jpeg', 0.95);//降到0.8会小很多，这里可以改小一点来减少导出的PDF的大小！！！！！！！！！！！！！！！！！！！！！！！！！！！！！
                         const jpegImage = await pdfDoc.embedJpg(jpegData.split(',')[1]);
                         
                         const page = pdfDoc.addPage([595.28, 841.89]);
                         page.drawImage(jpegImage, {
-                            x: 0,
-                            y: 0,
-                            width: 595.28,
-                            height: 841.89
+                            x: 0, y: 0, width: 595.28, height: 841.89
                         });
                         
                     } catch (imgErr) {
@@ -1898,26 +1911,31 @@
                 processingText.textContent = '正在生成PDF文件...';
                 const pdfBytes = await pdfDoc.save();
                 
+                // 修复：使用更可靠的下载方法
                 const blob = new Blob([pdfBytes], { type: 'application/pdf' });
                 const url = URL.createObjectURL(blob);
                 
+                // 创建一次性的下载链接
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `扫描文档_${new Date().toLocaleDateString().replace(/\//g, '-')}_${imagesToExport.length}页.pdf`;
                 
+                // 使用一次性的事件处理
                 const clickHandler = () => {
                     document.body.removeChild(a);
+                    // 延迟释放URL，确保下载完成
                     setTimeout(() => {
                         URL.revokeObjectURL(url);
                     }, 1000);
                 };
+                
                 a.addEventListener('click', clickHandler, { once: true });
                 
                 document.body.appendChild(a);
                 a.click();
                 
                 processing.classList.remove('active');
-                showToast(`PDF导出成功！共 ${imagesToExport.length} 页，已适度压缩`);
+                showToast(`PDF导出成功！共 ${imagesToExport.length} 页`);
                 
             } catch (err) {
                 console.error('PDF导出失败:', err);
@@ -1926,7 +1944,9 @@
                 processing.classList.remove('active');
                 
                 showToast('导出失败：' + err.message);
+                alert('导出PDF失败：' + err.message);
             } finally {
+                // 恢复按钮状态
                 isExporting = false;
                 const exportBtn = document.getElementById('exportPdfBtn');
                 if (exportBtn) {
@@ -1935,7 +1955,7 @@
                 }
             }
         }
-
+        
         function loadImage(src) {
             return new Promise((resolve, reject) => {
                 const img = new Image();
@@ -1944,29 +1964,35 @@
                 img.src = src;
             });
         }
-
+        
         function showToast(message) {
             const toast = document.getElementById('toast');
             toast.textContent = message;
             toast.classList.add('show');
             setTimeout(() => toast.classList.remove('show'), 2500);
         }
-
+        
         // OCR相关功能
+        
+        // 设置OCR语言
         function setOCRLang(lang) {
             ocrLang = lang;
+            // 更新按钮状态
             document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             showToast(`OCR语言已设置为: ${getLangName(lang)}`);
         }
-
+        
+        // 设置OCR模式
         function setOCRMode(mode) {
             ocrMode = mode;
+            // 更新按钮状态
             document.querySelectorAll('.ocr-mode-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             showToast(`OCR模式已设置为: ${getModeName(mode)}`);
         }
-
+        
+        // 获取语言名称
         function getLangName(lang) {
             const langNames = {
                 'chi_sim+eng': '中文+英文',
@@ -1977,7 +2003,8 @@
             };
             return langNames[lang] || lang;
         }
-
+        
+        // 获取模式名称
         function getModeName(mode) {
             const modeNames = {
                 'standard': '标准识别',
@@ -1986,7 +2013,8 @@
             };
             return modeNames[mode] || mode;
         }
-
+        
+        // OCR文字识别主函数
         async function recognizeText() {
             if (!currentImage) {
                 showToast('请先选择或拍摄图片');
@@ -2002,17 +2030,21 @@
                 isOCRProcessing = true;
                 const startTime = Date.now();
                 
+                // 显示处理中状态
                 const processing = document.getElementById('processing');
                 const processingText = document.getElementById('processingText');
                 processing.classList.add('active');
                 processingText.textContent = '正在初始化OCR引擎...';
                 
+                // 检查Tesseract.js是否可用
                 if (typeof Tesseract === 'undefined') {
                     throw new Error('OCR引擎未加载，请检查网络连接');
                 }
                 
+                // 获取当前预览图片
                 const canvas = document.getElementById('previewCanvas');
                 
+                // 根据识别模式调整参数
                 let config = {
                     lang: ocrLang,
                     logger: (m) => {
@@ -2023,6 +2055,7 @@
                     }
                 };
                 
+                // 根据模式调整设置
                 if (ocrMode === 'fast') {
                     config.tessedit_pageseg_mode = Tesseract.PSM.SINGLE_BLOCK;
                     config.tessedit_char_whitelist = '';
@@ -2030,11 +2063,13 @@
                     config.tessedit_pageseg_mode = Tesseract.PSM.AUTO;
                     config.tessedit_char_blacklist = '';
                 } else {
+                    // 标准模式使用默认设置
                     config.tessedit_pageseg_mode = Tesseract.PSM.AUTO_OSD;
                 }
                 
                 processingText.textContent = '正在识别图片中的文字...';
                 
+                // 执行OCR识别
                 const result = await Tesseract.recognize(
                     canvas,
                     ocrLang,
@@ -2044,8 +2079,10 @@
                 const endTime = Date.now();
                 const timeTaken = (endTime - startTime) / 1000;
                 
+                // 更新OCR结果
                 updateOCRResult(result.data.text, timeTaken);
                 
+                // 存储结果
                 ocrResults[currentImage] = {
                     text: result.data.text,
                     time: timeTaken,
@@ -2057,6 +2094,7 @@
                 processing.classList.remove('active');
                 showToast(`OCR识别完成！用时 ${timeTaken.toFixed(2)} 秒`);
                 
+                // 打开OCR结果模态框
                 openOCR();
                 
             } catch (err) {
@@ -2070,7 +2108,8 @@
                 isOCRProcessing = false;
             }
         }
-
+        
+        // 更新OCR结果
         function updateOCRResult(text, timeTaken) {
             const ocrTextArea = document.getElementById('ocrText');
             const charCount = document.getElementById('ocrCharCount');
@@ -2080,15 +2119,18 @@
             charCount.textContent = `字符: ${text.length}`;
             timeEl.textContent = `用时: ${timeTaken.toFixed(2)}s`;
         }
-
+        
+        // 打开OCR结果模态框
         function openOCR() {
             document.getElementById('ocrModal').classList.add('active');
         }
-
+        
+        // 关闭OCR结果模态框
         function closeOCR() {
             document.getElementById('ocrModal').classList.remove('active');
         }
-
+        
+        // 复制OCR文本
         function copyOCRText() {
             const ocrTextArea = document.getElementById('ocrText');
             ocrTextArea.select();
@@ -2096,12 +2138,14 @@
                 document.execCommand('copy');
                 showToast('文本已复制到剪贴板');
             } catch (err) {
+                // 使用现代API
                 navigator.clipboard.writeText(ocrTextArea.value)
                     .then(() => showToast('文本已复制到剪贴板'))
                     .catch(() => showToast('复制失败，请手动复制'));
             }
         }
-
+        
+        // 保存OCR文本为TXT文件
         function saveOCRText() {
             const ocrTextArea = document.getElementById('ocrText');
             const text = ocrTextArea.value;
@@ -2124,7 +2168,8 @@
             
             showToast('文本已保存为TXT文件');
         }
-
+        
+        // 将OCR结果导出为PDF
         async function exportOCRToPDF() {
             const ocrTextArea = document.getElementById('ocrText');
             const text = ocrTextArea.value;
@@ -2143,24 +2188,31 @@
                 const { PDFDocument, StandardFonts, rgb } = PDFLib;
                 const pdfDoc = await PDFDocument.create();
                 
+                // 设置PDF元数据
                 pdfDoc.setTitle('OCR识别结果');
                 pdfDoc.setAuthor('Lens Scanner Pro');
                 pdfDoc.setSubject('OCR文字识别');
                 pdfDoc.setKeywords(['OCR', '文字识别', '扫描']);
                 
+                // 添加页面 (A4: 595.28 x 841.89 points)
                 const page = pdfDoc.addPage([595.28, 841.89]);
                 const { width, height } = page.getSize();
                 
+                // 设置字体
                 const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
                 const fontSize = 12;
                 const lineHeight = fontSize * 1.2;
                 const margin = 50;
                 const maxWidth = width - 2 * margin;
                 
+                // 分割文本为行
                 const lines = splitTextIntoLines(text, font, fontSize, maxWidth);
                 
+                // 计算总高度
+                const totalHeight = lines.length * lineHeight;
                 let currentY = height - margin;
                 
+                // 添加标题
                 page.drawText('OCR识别结果', {
                     x: margin,
                     y: currentY,
@@ -2171,6 +2223,7 @@
                 
                 currentY -= 30;
                 
+                // 添加元数据
                 const metaText = `识别时间: ${new Date().toLocaleString()} | 语言: ${getLangName(ocrLang)} | 模式: ${getModeName(ocrMode)}`;
                 page.drawText(metaText, {
                     x: margin,
@@ -2182,6 +2235,7 @@
                 
                 currentY -= 20;
                 
+                // 添加分割线
                 page.drawLine({
                     start: { x: margin, y: currentY },
                     end: { x: width - margin, y: currentY },
@@ -2191,10 +2245,13 @@
                 
                 currentY -= 20;
                 
+                // 添加正文
                 for (const line of lines) {
                     if (currentY < margin) {
+                        // 添加新页面
                         const newPage = pdfDoc.addPage([595.28, 841.89]);
                         currentY = height - margin;
+                        page = newPage;
                     }
                     
                     page.drawText(line, {
@@ -2221,6 +2278,7 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
+
                 
                 processing.classList.remove('active');
                 showToast('OCR结果已导出为PDF');
@@ -2234,7 +2292,8 @@
                 showToast('导出失败：' + err.message);
             }
         }
-
+        
+        // 将文本分割为适合PDF显示的行
         function splitTextIntoLines(text, font, fontSize, maxWidth) {
             const lines = [];
             const paragraphs = text.split('\n');
@@ -2260,13 +2319,12 @@
                 if (currentLine) {
                     lines.push(currentLine);
                 }
-                lines.push('');
+                lines.push(''); // 空行作为段落分隔
             }
             
             return lines;
         }
-
-        // 事件监听
+        
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
@@ -2274,22 +2332,22 @@
                 if (isCropping) updateCropFrame();
             }, 100);
         });
-
+        
         document.addEventListener('DOMContentLoaded', () => {
             setTimeout(initCamera, 100);
-
+            
             document.addEventListener('touchmove', (e) => {
                 if (e.target.closest('.gallery-grid') || e.target.closest('.filter-bar') || e.target.closest('.ocr-text-container')) return;
                 e.preventDefault();
             }, { passive: false });
-
+            
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden && !isCameraReady) {
                     setTimeout(initCamera, 500);
                 }
             });
         });
-
+        
         document.addEventListener('keydown', (e) => {
             if (e.code === 'Space' && !e.repeat && isCameraReady) {
                 e.preventDefault();
@@ -2299,6 +2357,7 @@
                 e.preventDefault();
                 confirmAndAdd();
             }
+            // 在OCR模态框中，Ctrl/Cmd + S 保存文本
             if ((e.ctrlKey || e.metaKey) && e.key === 's' && document.getElementById('ocrModal').classList.contains('active')) {
                 e.preventDefault();
                 saveOCRText();
