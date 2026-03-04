@@ -963,7 +963,14 @@
         let currentImage = null;
         let currentFilter = 'original';
         let isCropping = false;
-        let cropCorners = { tl: {x: 0.05, y: 0.05}, tr: {x: 0.95, y: 0.05}, bl: {x: 0.05, y: 0.95}, br: {x: 0.95, y: 0.95} };
+		// 在全局变量定义处修改，修复裁剪问题
+		let cropCorners = { 
+			tl: {x: 0.1, y: 0.2}, 
+			tr: {x: 0.9, y: 0.2}, 
+			bl: {x: 0.1, y: 0.8}, 
+			br: {x: 0.9, y: 0.8} 
+		};
+        //let cropCorners = { tl: {x: 0.05, y: 0.05}, tr: {x: 0.95, y: 0.05}, bl: {x: 0.05, y: 0.95}, br: {x: 0.95, y: 0.95} };
         let activeHandle = null;
         let videoTrack = null;
         let currentZoom = 1;
@@ -1339,40 +1346,57 @@
             showToast(modes[mode]);
         }
         
-        function capture() {
-            if (!isCameraReady) {
-                showToast('相机未就绪，请使用上传功能');
-                document.getElementById('fileInput').click();
-                return;
-            }
-            
-            const flash = document.getElementById('flash');
-            flash.classList.add('active');
-            setTimeout(() => flash.classList.remove('active'), 100);
-            
-            const video = document.getElementById('video');
-            const canvas = document.getElementById('processCanvas');
-            const ctx = canvas.getContext('2d');
-            
-            canvas.width = video.videoWidth || 1920;
-            canvas.height = video.videoHeight || 1080;
-            
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            currentImage = canvas.toDataURL('image/jpeg', 1.0);
-            currentFilter = currentMode === 'whiteboard' ? 'whiteboard' : 
-                          currentMode === 'document' ? 'document' : 
-                          currentMode === 'ocr' ? 'original' : 'original';
-            
-            showPreview();
-            
-            // 如果是OCR模式，自动开始识别
-            if (currentMode === 'ocr') {
-                setTimeout(() => {
-                    recognizeText();
-                }, 500);
-            }
-        }
+		function capture() {
+			if (!isCameraReady) {
+				showToast('相机未就绪，请使用上传功能');
+				document.getElementById('fileInput').click();
+				return;
+			}
+			
+			const flash = document.getElementById('flash');
+			flash.classList.add('active');
+			setTimeout(() => flash.classList.remove('active'), 100);
+			
+			const video = document.getElementById('video');
+			const canvas = document.getElementById('processCanvas');
+			const ctx = canvas.getContext('2d');
+			
+			// 扫描框相对坐标（根据 CSS 定义：left:10%, top:20%, right:10%, bottom:20%）
+			const cropLeft = 0.1;
+			const cropTop = 0.2;
+			const cropRight = 0.9;
+			const cropBottom = 0.8;
+			
+			const videoWidth = video.videoWidth || 1920;
+			const videoHeight = video.videoHeight || 1080;
+			
+			// 计算裁剪区域的像素坐标
+			const sourceX = Math.floor(videoWidth * cropLeft);
+			const sourceY = Math.floor(videoHeight * cropTop);
+			const sourceWidth = Math.floor(videoWidth * (cropRight - cropLeft));
+			const sourceHeight = Math.floor(videoHeight * (cropBottom - cropTop));
+			
+			// 设置画布大小为裁剪后的尺寸
+			canvas.width = sourceWidth;
+			canvas.height = sourceHeight;
+			
+			// 仅绘制裁剪区域
+			ctx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight);
+			
+			currentImage = canvas.toDataURL('image/jpeg', 1.0);
+			currentFilter = currentMode === 'whiteboard' ? 'whiteboard' : 
+						  currentMode === 'document' ? 'document' : 
+						  currentMode === 'ocr' ? 'original' : 'original';
+			
+			showPreview();
+			
+			// 如果是OCR模式，自动开始识别
+			if (currentMode === 'ocr') {
+				setTimeout(() => {
+					recognizeText();
+				}, 500);
+			}
+		}
         
         function showPreview() {
             const container = document.getElementById('previewContainer');
