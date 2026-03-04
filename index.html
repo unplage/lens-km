@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(self)">
     <title>Lens Scanner Pro</title>
-    <script src="https://cdn.tailwindcss.com "></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js "></script>
-    <!-- 添加Tesseract.js库 -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js "></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <!-- Tesseract.js OCR库 -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300 ;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
         * {
             -webkit-tap-highlight-color: transparent;
@@ -770,7 +770,6 @@
         <label class="upload-btn" for="fileInput" title="上传多张照片">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
         </label>
-        <!-- 添加 multiple 属性支持多选 -->
         <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFileUpload(event)">
         
         <div class="shutter-btn" onclick="capture()">
@@ -916,7 +915,6 @@
         <div class="gallery-grid" id="galleryGrid"></div>
         <div class="gallery-actions">
             <button class="action-btn btn-secondary" onclick="deleteSelected()">删除选中</button>
-            <!-- 修复：确保按钮整体可点击，添加明确的点击区域 -->
             <button class="action-btn btn-primary" id="exportPdfBtn" onclick="exportPDF()" style="position: relative; z-index: 71;">
                 <span>导出 PDF</span>
                 <span style="font-size: 11px; opacity: 0.8;">(<span id="exportCount">0</span>)</span>
@@ -942,7 +940,6 @@
             console.log('PDFLib 库已加载');
         }
 
-        // 检查Tesseract.js库
         if (typeof Tesseract === 'undefined') {
             console.error('Tesseract.js 库未加载！');
         } else {
@@ -961,18 +958,17 @@
         let currentZoom = 1;
         let isCameraReady = false;
         let isAllSelected = false;
-        // 用于存储多文件上传的临时数组
         let pendingUploads = [];
         let currentUploadIndex = 0;
-        let isExporting = false; // 防止重复导出
+        let isExporting = false;
         
         // OCR相关变量
-        let ocrLang = 'chi_sim+eng'; // 默认语言：简体中文+英文
-        let ocrMode = 'standard'; // 识别模式：standard, fast, accurate
-        let ocrWorker = null; // Tesseract工作器
-        let isOCRProcessing = false; // 防止重复OCR处理
-        let ocrResults = {}; // 存储OCR结果
+        let ocrLang = 'chi_sim+eng';
+        let ocrMode = 'standard';
+        let isOCRProcessing = false;
+        let ocrResults = {};
 
+        // 相机初始化函数（与之前相同）
         async function initCamera() {
             hideError();
             
@@ -1026,7 +1022,7 @@
                 handleCameraError(err);
             }
         }
-        
+
         function handleCameraError(err) {
             let title = '无法访问相机';
             let message = '请检查相机权限设置';
@@ -1047,7 +1043,7 @@
             
             showError(title, message);
         }
-        
+
         async function retryWithDefaultConstraints() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -1061,33 +1057,29 @@
                 showError('相机访问失败', '无法启动相机，请使用上传功能代替');
             }
         }
-        
+
         function showError(title, text) {
             document.getElementById('errorMessage').classList.add('active');
             document.querySelector('#errorMessage .text-lg').textContent = title;
             document.getElementById('errorText').textContent = text;
         }
-        
+
         function hideError() {
             document.getElementById('errorMessage').classList.remove('active');
         }
-        
+
         function retryCamera() {
             initCamera();
         }
-        
-        // 处理多文件上传
+
+        // 文件上传处理
         function handleFileUpload(event) {
             const files = Array.from(event.target.files);
             if (files.length === 0) return;
             
-            console.log(`选择了 ${files.length} 个文件`);
-            
-            // 清空之前待处理的
             pendingUploads = [];
             currentUploadIndex = 0;
             
-            // 过滤非图片文件
             const imageFiles = files.filter(file => file.type.startsWith('image/'));
             
             if (imageFiles.length === 0) {
@@ -1100,18 +1092,14 @@
                 showToast(`已过滤 ${files.length - imageFiles.length} 个非图片文件`);
             }
             
-            // 存储待上传的文件
             pendingUploads = imageFiles;
             
-            // 直接批量处理所有文件，不显示预览
             showToast(`开始处理 ${pendingUploads.length} 张照片...`);
             batchProcessUploads();
             
-            // 清空input，允许重复选择相同文件
             event.target.value = '';
         }
-        
-        // 批量处理上传的文件，不显示预览
+
         async function batchProcessUploads() {
             const processing = document.getElementById('processing');
             const processingText = document.getElementById('processingText');
@@ -1126,7 +1114,6 @@
                 try {
                     const imageData = await readImageFile(file);
                     
-                    // 根据当前模式应用滤镜
                     let filteredImage = imageData;
                     if (currentMode === 'whiteboard' || currentMode === 'document') {
                         filteredImage = await applyFilterToImage(imageData, currentMode);
@@ -1141,7 +1128,6 @@
                     
                     successCount++;
                     
-                    // 每处理5张图片让出时间片，避免界面卡顿
                     if (i % 5 === 0) {
                         await new Promise(resolve => setTimeout(resolve, 0));
                     }
@@ -1154,14 +1140,12 @@
             processing.classList.remove('active');
             updateGalleryCount();
             
-            // 清空上传队列
             pendingUploads = [];
             currentUploadIndex = 0;
             
             showToast(`成功添加 ${successCount} 张照片到相册`);
         }
-        
-        // 读取图片文件为DataURL
+
         function readImageFile(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
@@ -1170,8 +1154,7 @@
                 reader.readAsDataURL(file);
             });
         }
-        
-        // 对图片应用滤镜
+
         function applyFilterToImage(imageData, filterType) {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -1182,13 +1165,11 @@
                     canvas.height = img.height;
                     ctx.drawImage(img, 0, 0);
                     
-                    // 如果不需要滤镜，直接返回
                     if (filterType === 'original' || filterType === 'photo' || filterType === 'ocr') {
                         resolve(canvas.toDataURL('image/jpeg', 0.95));
                         return;
                     }
                     
-                    // 应用滤镜
                     const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
                     const data = imageDataObj.data;
                     
@@ -1213,8 +1194,7 @@
                 img.src = imageData;
             });
         }
-        
-        // 修改确认添加，支持批量上传流程
+
         function confirmAndAdd() {
             if (!currentImage) {
                 showToast('没有可保存的图片');
@@ -1234,10 +1214,8 @@
             updateGalleryCount();
             closePreview();
             
-            // 如果是批量上传模式，继续下一个
             if (pendingUploads.length > 0 && currentUploadIndex < pendingUploads.length) {
                 currentUploadIndex++;
-                // 稍微延迟，让用户看到提示
                 setTimeout(() => {
                     processNextUpload();
                 }, 300);
@@ -1245,7 +1223,7 @@
                 showToast(`已添加，共 ${capturedImages.length} 张`);
             }
         }
-        
+
         async function toggleFlash() {
             if (!videoTrack) {
                 showToast('相机未就绪');
@@ -1266,7 +1244,7 @@
                 showToast('闪光灯控制失败');
             }
         }
-        
+
         async function switchCamera() {
             if (!stream) {
                 showToast('相机未启动');
@@ -1292,7 +1270,7 @@
                 initCamera();
             }
         }
-        
+
         function setZoom(level) {
             currentZoom = level;
             document.querySelectorAll('.zoom-btn').forEach(btn => btn.classList.remove('active'));
@@ -1308,7 +1286,7 @@
                 showToast(`${level}x 数码变焦`);
             }
         }
-        
+
         function setMode(mode, element) {
             currentMode = mode;
             document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
@@ -1330,7 +1308,7 @@
             };
             showToast(modes[mode]);
         }
-        
+
         function capture() {
             if (!isCameraReady) {
                 showToast('相机未就绪，请使用上传功能');
@@ -1358,14 +1336,13 @@
             
             showPreview();
             
-            // 如果是OCR模式，自动开始识别
             if (currentMode === 'ocr') {
                 setTimeout(() => {
                     recognizeText();
                 }, 500);
             }
         }
-        
+
         function showPreview() {
             const container = document.getElementById('previewContainer');
             const canvas = document.getElementById('previewCanvas');
@@ -1385,13 +1362,12 @@
             };
             img.src = currentImage;
             
-            // 重置标题
             const headerTitle = container.querySelector('.preview-header span');
             headerTitle.textContent = '编辑';
             
             container.classList.add('active');
         }
-        
+
         function closePreview(clearUploadQueue = false) {
             document.getElementById('previewContainer').classList.remove('active');
             document.getElementById('progressIndicator').style.display = 'none';
@@ -1400,13 +1376,12 @@
             currentImage = null;
             currentFilter = 'original';
             
-            // 如果用户取消，清空上传队列
             if (clearUploadQueue && pendingUploads.length > 0) {
                 pendingUploads = [];
                 currentUploadIndex = 0;
             }
         }
-        
+
         function applyFilter(filter, element) {
             if (!currentImage) return;
             
@@ -1450,7 +1425,7 @@
             };
             img.src = currentImage;
         }
-        
+
         function applyWhiteboardFilter(data, width, height) {
             let totalBrightness = 0;
             for (let i = 0; i < data.length; i += 4) {
@@ -1475,7 +1450,7 @@
             }
             sharpenImage(data, width, height, 0.3);
         }
-        
+
         function applyDocumentFilter(data, width, height) {
             const contrast = 1.4;
             const intercept = 128 * (1 - contrast);
@@ -1487,14 +1462,14 @@
             }
             sharpenImage(data, width, height, 0.5);
         }
-        
+
         function applyGrayscale(data) {
             for (let i = 0; i < data.length; i += 4) {
                 const gray = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
                 data[i] = data[i+1] = data[i+2] = gray;
             }
         }
-        
+
         function applyBlackWhite(data) {
             for (let i = 0; i < data.length; i += 4) {
                 const gray = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
@@ -1502,7 +1477,7 @@
                 data[i] = data[i+1] = data[i+2] = val;
             }
         }
-        
+
         function applyMagicColor(data) {
             for (let i = 0; i < data.length; i += 4) {
                 const max = Math.max(data[i], data[i+1], data[i+2]);
@@ -1514,7 +1489,7 @@
                 }
             }
         }
-        
+
         function sharpenImage(data, width, height, strength) {
             const copy = new Uint8ClampedArray(data);
             const w = width;
@@ -1529,7 +1504,7 @@
                 }
             }
         }
-        
+
         function rotateImage() {
             const canvas = document.getElementById('previewCanvas');
             const temp = document.getElementById('tempCanvas');
@@ -1551,7 +1526,7 @@
             resetCropCorners();
             showToast('已旋转90°');
         }
-        
+
         function toggleCrop() {
             isCropping = !isCropping;
             const frame = document.getElementById('cropFrame');
@@ -1559,70 +1534,60 @@
             if (isCropping) {
                 frame.classList.add('active');
                 updateCropFrame();
-                initCropDrag();
+                initCropDrag(); // 重新绑定拖动事件
                 showToast('拖动角落调整裁剪区域');
             } else {
                 frame.classList.remove('active');
                 applyCrop();
             }
         }
-        
+
         function resetCropCorners() {
             cropCorners = { tl: {x: 0.05, y: 0.05}, tr: {x: 0.95, y: 0.05}, bl: {x: 0.05, y: 0.95}, br: {x: 0.95, y: 0.95} };
             if (isCropping) updateCropFrame();
         }
-        
-        function updateCropFrame() {
-            const canvas = document.getElementById('previewCanvas');
-            const container = document.getElementById('previewCanvasContainer');
-            const frame = document.getElementById('cropFrame');
-            const rect = canvas.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            
-            const left = rect.left - containerRect.left + cropCorners.tl.x * rect.width;
-            const top = rect.top - containerRect.top + cropCorners.tl.y * rect.height;
-            const width = (cropCorners.tr.x - cropCorners.tl.x) * rect.width;
-            const height = (cropCorners.bl.y - cropCorners.tl.y) * rect.height;
-            
-            frame.style.left = left + 'px';
-            frame.style.top = top + 'px';
-            frame.style.width = width + 'px';
-            frame.style.height = height + 'px';
-        }
-        
+
+        // ================= 修复后的裁剪相关函数 =================
         function initCropDrag() {
             const handles = document.querySelectorAll('.crop-handle');
             
+            // 移除旧监听器，避免重复绑定
             handles.forEach(handle => {
-                handle.addEventListener('touchstart', handleDragStart, {passive: false});
-                handle.addEventListener('mousedown', handleDragStart);
+                handle.removeEventListener('touchstart', handleDragStart);
+                handle.removeEventListener('mousedown', handleDragStart);
             });
-            
+
             function handleDragStart(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 activeHandle = e.target.dataset.corner;
-                
-                document.addEventListener('touchmove', handleDrag, {passive: false});
+
+                document.addEventListener('touchmove', handleDrag, { passive: false });
                 document.addEventListener('touchend', handleDragEnd);
                 document.addEventListener('mousemove', handleDrag);
                 document.addEventListener('mouseup', handleDragEnd);
             }
-            
+
             function handleDrag(e) {
                 if (!activeHandle) return;
                 e.preventDefault();
-                
+
                 const canvas = document.getElementById('previewCanvas');
                 const rect = canvas.getBoundingClientRect();
-                
+                const container = document.getElementById('previewCanvasContainer');
+                const containerRect = container.getBoundingClientRect();
+
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                
-                const x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-                const y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
-                
-                switch(activeHandle) {
+
+                // 将屏幕坐标转换为相对于canvas左上角的归一化坐标（0-1）
+                let x = (clientX - rect.left) / rect.width;
+                let y = (clientY - rect.top) / rect.height;
+
+                x = Math.max(0, Math.min(1, x));
+                y = Math.max(0, Math.min(1, y));
+
+                switch (activeHandle) {
                     case 'tl':
                         cropCorners.tl.x = Math.min(x, cropCorners.tr.x - 0.05);
                         cropCorners.tl.y = Math.min(y, cropCorners.bl.y - 0.05);
@@ -1640,10 +1605,10 @@
                         cropCorners.br.y = Math.max(y, cropCorners.tr.y + 0.05);
                         break;
                 }
-                
+
                 updateCropFrame();
             }
-            
+
             function handleDragEnd() {
                 activeHandle = null;
                 document.removeEventListener('touchmove', handleDrag);
@@ -1651,8 +1616,35 @@
                 document.removeEventListener('mousemove', handleDrag);
                 document.removeEventListener('mouseup', handleDragEnd);
             }
+
+            handles.forEach(handle => {
+                handle.addEventListener('touchstart', handleDragStart, { passive: false });
+                handle.addEventListener('mousedown', handleDragStart);
+            });
         }
-        
+
+        function updateCropFrame() {
+            const canvas = document.getElementById('previewCanvas');
+            const container = document.getElementById('previewCanvasContainer');
+            const frame = document.getElementById('cropFrame');
+            
+            if (!canvas || !container || !frame) return;
+
+            const canvasRect = canvas.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+
+            const left = canvasRect.left - containerRect.left + cropCorners.tl.x * canvasRect.width;
+            const top = canvasRect.top - containerRect.top + cropCorners.tl.y * canvasRect.height;
+            const width = (cropCorners.tr.x - cropCorners.tl.x) * canvasRect.width;
+            const height = (cropCorners.bl.y - cropCorners.tl.y) * canvasRect.height;
+
+            frame.style.left = left + 'px';
+            frame.style.top = top + 'px';
+            frame.style.width = width + 'px';
+            frame.style.height = height + 'px';
+        }
+        // =======================================================
+
         function applyCrop() {
             const canvas = document.getElementById('previewCanvas');
             const temp = document.getElementById('tempCanvas');
@@ -1682,7 +1674,7 @@
             currentImage = canvas.toDataURL('image/jpeg', 1.0);
             showToast('已裁剪');
         }
-        
+
         function updateGalleryCount() {
             const count = document.getElementById('galleryCount');
             const total = capturedImages.length;
@@ -1694,7 +1686,7 @@
                 count.style.display = 'none';
             }
         }
-        
+
         function openGallery() {
             const modal = document.getElementById('galleryModal');
             const grid = document.getElementById('galleryGrid');
@@ -1722,14 +1714,14 @@
             updateExportCount();
             modal.classList.add('active');
         }
-        
+
         function updateExportCount() {
             const selected = document.querySelectorAll('.gallery-item.selected').length;
             const total = capturedImages.length;
             const count = selected > 0 ? selected : total;
             document.getElementById('exportCount').textContent = count;
         }
-        
+
         function updateSelectAllButton() {
             const selectAllBtn = document.getElementById('selectAllBtn');
             const items = document.querySelectorAll('.gallery-item');
@@ -1743,7 +1735,7 @@
                 selectAllBtn.textContent = '全选';
             }
         }
-        
+
         function toggleSelectAll() {
             const items = document.querySelectorAll('.gallery-item');
             
@@ -1758,11 +1750,11 @@
             updateSelectAllButton();
             updateExportCount();
         }
-        
+
         function closeGallery() {
             document.getElementById('galleryModal').classList.remove('active');
         }
-        
+
         function deleteSelected() {
             const selected = document.querySelectorAll('.gallery-item.selected');
             if (selected.length === 0) {
@@ -1782,12 +1774,11 @@
             updateGalleryCount();
             showToast(`已删除 ${selected.length} 个，剩余 ${capturedImages.length} 个`);
         }
-        
+
         // ---------- 优化后的导出PDF函数 ----------
         async function exportPDF() {
             console.log('导出PDF按钮被点击');
             
-            // 防止重复点击
             if (isExporting) {
                 console.log('正在导出中，请稍候...');
                 return;
@@ -1847,15 +1838,14 @@
                 const pdfDoc = await PDFDocument.create();
                 
                 // 压缩参数
-                const JPEG_QUALITY = 0.8;          // JPEG质量，0.8 平衡大小与清晰度
-                const TARGET_DPI = 150;              // 目标输出 DPI（150 适合文档）
-                const A4_WIDTH_PX = Math.round(8.27 * TARGET_DPI);   // A4宽度英寸 * DPI
-                const A4_HEIGHT_PX = Math.round(11.69 * TARGET_DPI); // A4高度英寸 * DPI
+                const JPEG_QUALITY = 0.8;          // JPEG质量
+                const TARGET_DPI = 150;              // 目标输出 DPI
+                const A4_WIDTH_PX = Math.round(8.27 * TARGET_DPI);
+                const A4_HEIGHT_PX = Math.round(11.69 * TARGET_DPI);
                 
                 for (let i = 0; i < imagesToExport.length; i++) {
                     processingText.textContent = `正在处理第 ${i+1}/${imagesToExport.length} 页...`;
                     
-                    // 每5页让出时间片，避免界面卡顿
                     if (i % 5 === 0 && i > 0) {
                         await new Promise(resolve => setTimeout(resolve, 10));
                     }
@@ -1863,22 +1853,18 @@
                     try {
                         const img = await loadImage(imagesToExport[i].data);
                         
-                        // 计算缩放后的尺寸（保持比例，不超过目标尺寸）
                         let drawWidth, drawHeight;
                         const imgRatio = img.width / img.height;
                         const targetRatio = A4_WIDTH_PX / A4_HEIGHT_PX;
                         
                         if (imgRatio > targetRatio) {
-                            // 图片更宽：以目标宽度为准，高度自适应
                             drawWidth = A4_WIDTH_PX;
                             drawHeight = Math.round(A4_WIDTH_PX / imgRatio);
                         } else {
-                            // 图片更高：以目标高度为准，宽度自适应
                             drawHeight = A4_HEIGHT_PX;
                             drawWidth = Math.round(A4_HEIGHT_PX * imgRatio);
                         }
                         
-                        // 如果原始图片小于目标尺寸，则使用原始尺寸（避免放大模糊）
                         if (img.width < drawWidth || img.height < drawHeight) {
                             drawWidth = img.width;
                             drawHeight = img.height;
@@ -1889,16 +1875,13 @@
                         canvas.width = drawWidth;
                         canvas.height = drawHeight;
                         
-                        // 白色背景（文档扫描常用）
                         ctx.fillStyle = 'white';
                         ctx.fillRect(0, 0, drawWidth, drawHeight);
                         ctx.drawImage(img, 0, 0, drawWidth, drawHeight);
                         
-                        // 使用压缩质量生成 JPEG
                         const jpegData = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
                         const jpegImage = await pdfDoc.embedJpg(jpegData.split(',')[1]);
                         
-                        // PDF 页面使用标准 A4 尺寸（点），图片将自动缩放填充页面
                         const page = pdfDoc.addPage([595.28, 841.89]);
                         page.drawImage(jpegImage, {
                             x: 0,
@@ -1909,7 +1892,6 @@
                         
                     } catch (imgErr) {
                         console.error(`处理第 ${i+1} 张图片失败:`, imgErr);
-                        // 继续处理下一张
                     }
                 }
                 
@@ -1923,7 +1905,6 @@
                 a.href = url;
                 a.download = `扫描文档_${new Date().toLocaleDateString().replace(/\//g, '-')}_${imagesToExport.length}页.pdf`;
                 
-                // 使用一次性的事件处理
                 const clickHandler = () => {
                     document.body.removeChild(a);
                     setTimeout(() => {
@@ -1946,7 +1927,6 @@
                 
                 showToast('导出失败：' + err.message);
             } finally {
-                // 恢复按钮状态
                 isExporting = false;
                 const exportBtn = document.getElementById('exportPdfBtn');
                 if (exportBtn) {
@@ -1955,7 +1935,7 @@
                 }
             }
         }
-        
+
         function loadImage(src) {
             return new Promise((resolve, reject) => {
                 const img = new Image();
@@ -1964,29 +1944,29 @@
                 img.src = src;
             });
         }
-        
+
         function showToast(message) {
             const toast = document.getElementById('toast');
             toast.textContent = message;
             toast.classList.add('show');
             setTimeout(() => toast.classList.remove('show'), 2500);
         }
-        
-        // OCR相关功能（保持不变）
+
+        // OCR相关功能
         function setOCRLang(lang) {
             ocrLang = lang;
             document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             showToast(`OCR语言已设置为: ${getLangName(lang)}`);
         }
-        
+
         function setOCRMode(mode) {
             ocrMode = mode;
             document.querySelectorAll('.ocr-mode-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             showToast(`OCR模式已设置为: ${getModeName(mode)}`);
         }
-        
+
         function getLangName(lang) {
             const langNames = {
                 'chi_sim+eng': '中文+英文',
@@ -1997,7 +1977,7 @@
             };
             return langNames[lang] || lang;
         }
-        
+
         function getModeName(mode) {
             const modeNames = {
                 'standard': '标准识别',
@@ -2006,7 +1986,7 @@
             };
             return modeNames[mode] || mode;
         }
-        
+
         async function recognizeText() {
             if (!currentImage) {
                 showToast('请先选择或拍摄图片');
@@ -2090,7 +2070,7 @@
                 isOCRProcessing = false;
             }
         }
-        
+
         function updateOCRResult(text, timeTaken) {
             const ocrTextArea = document.getElementById('ocrText');
             const charCount = document.getElementById('ocrCharCount');
@@ -2100,15 +2080,15 @@
             charCount.textContent = `字符: ${text.length}`;
             timeEl.textContent = `用时: ${timeTaken.toFixed(2)}s`;
         }
-        
+
         function openOCR() {
             document.getElementById('ocrModal').classList.add('active');
         }
-        
+
         function closeOCR() {
             document.getElementById('ocrModal').classList.remove('active');
         }
-        
+
         function copyOCRText() {
             const ocrTextArea = document.getElementById('ocrText');
             ocrTextArea.select();
@@ -2121,7 +2101,7 @@
                     .catch(() => showToast('复制失败，请手动复制'));
             }
         }
-        
+
         function saveOCRText() {
             const ocrTextArea = document.getElementById('ocrText');
             const text = ocrTextArea.value;
@@ -2144,7 +2124,7 @@
             
             showToast('文本已保存为TXT文件');
         }
-        
+
         async function exportOCRToPDF() {
             const ocrTextArea = document.getElementById('ocrText');
             const text = ocrTextArea.value;
@@ -2254,7 +2234,7 @@
                 showToast('导出失败：' + err.message);
             }
         }
-        
+
         function splitTextIntoLines(text, font, fontSize, maxWidth) {
             const lines = [];
             const paragraphs = text.split('\n');
@@ -2285,7 +2265,8 @@
             
             return lines;
         }
-        
+
+        // 事件监听
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
@@ -2293,22 +2274,22 @@
                 if (isCropping) updateCropFrame();
             }, 100);
         });
-        
+
         document.addEventListener('DOMContentLoaded', () => {
             setTimeout(initCamera, 100);
-            
+
             document.addEventListener('touchmove', (e) => {
                 if (e.target.closest('.gallery-grid') || e.target.closest('.filter-bar') || e.target.closest('.ocr-text-container')) return;
                 e.preventDefault();
             }, { passive: false });
-            
+
             document.addEventListener('visibilitychange', () => {
                 if (!document.hidden && !isCameraReady) {
                     setTimeout(initCamera, 500);
                 }
             });
         });
-        
+
         document.addEventListener('keydown', (e) => {
             if (e.code === 'Space' && !e.repeat && isCameraReady) {
                 e.preventDefault();
