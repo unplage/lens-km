@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(self)">
-    <title>Lens Scanner Pro - 智能扫描仪（按文件名排序）</title>
+    <title>Lens Scanner Pro - 按文件名排序</title>
     <link rel="manifest" href="./manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
@@ -887,13 +887,13 @@
         <div class="ocr-content"><div class="ocr-info"><div>识别结果</div><div class="ocr-stats"><span class="ocr-stat" id="ocrCharCount">字符: 0</span><span class="ocr-stat" id="ocrTime">用时: 0s</span></div></div><div class="ocr-text-container"><textarea id="ocrText" placeholder="识别结果将显示在这里..."></textarea></div><div class="ocr-actions"><button class="action-btn btn-secondary" onclick="saveOCRText()"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span>保存为TXT</span></button><button class="action-btn btn-primary" onclick="exportOCRToPDF()"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg><span>导出为PDF</span></button></div></div>
     </div>
     
-    <!-- 相册模态框（含手动DPI选择） -->
+    <!-- 相册模态框（含手动DPI选择 + 按文件名排序按钮） -->
     <div class="gallery-modal" id="galleryModal">
         <div class="preview-header"><button onclick="closeGallery()" class="text-white">关闭</button><span class="text-white font-semibold">相册 (<span id="galleryTotal">0</span>)</span><button onclick="toggleSelectAll()" class="text-[#00ff88]" id="selectAllBtn">全选</button></div>
         <div class="gallery-grid" id="galleryGrid"></div>
         
-        <!-- 手动选择DPI区域 -->
-        <div class="dpi-selector">
+        <!-- 手动选择DPI区域 + 按文件名排序按钮 -->
+        <div class="dpi-selector" style="justify-content: space-between;">
             <span class="dpi-label">📄 导出分辨率 (DPI)</span>
             <div class="dpi-buttons">
                 <button class="dpi-btn" data-dpi="150">150</button>
@@ -901,7 +901,7 @@
                 <button class="dpi-btn" data-dpi="250">250</button>
                 <button class="dpi-btn active" data-dpi="300">300</button>
             </div>
-            <span class="dpi-note">越高越清晰，文件越大</span>
+            <button onclick="sortGalleryByFileName()" style="background: #2a2a2a; border: none; color: #00ff88; padding: 6px 12px; border-radius: 20px; font-size: 12px; cursor: pointer;">📁 按文件名排序</button>
         </div>
         
         <div class="gallery-actions">
@@ -1508,7 +1508,23 @@
             showToast(`已删除 ${sorted.length} 个，剩余 ${capturedImages.length} 个`);
         }
         
-        // ======================== 导出 PDF（按文件名排序） ========================
+        // ======================== 按文件名排序相册 ========================
+        function sortGalleryByFileName() {
+            if (capturedImages.length === 0) {
+                showToast('没有图片可排序');
+                return;
+            }
+            capturedImages.sort((a, b) => {
+                const nameA = a.fileName || '';
+                const nameB = b.fileName || '';
+                return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+            });
+            selectedOrder = [];
+            openGallery();  // 刷新相册显示
+            showToast('已按文件名重新排序相册');
+        }
+        
+        // ======================== 导出 PDF（严格按文件名排序） ========================
         async function exportPDF() {
             if (isExporting) { showToast('正在导出中，请稍候...'); return; }
             try {
@@ -1517,24 +1533,15 @@
                 exportBtn.disabled = true; exportBtn.style.opacity = '0.7';
                 if (typeof PDFLib === 'undefined') throw new Error('PDF库未加载');
                 
-                let imagesToExport = [];
-                if (selectedOrder.length > 0) {
-                    for (let idx of selectedOrder) {
-                        if (capturedImages[idx]) imagesToExport.push(capturedImages[idx]);
-                    }
-                } else {
-                    imagesToExport = [...capturedImages];
-                }
-                
-                if (imagesToExport.length === 0) { showToast('没有可导出的图片'); isExporting=false; exportBtn.disabled=false; exportBtn.style.opacity='1'; return; }
-                
-                // 关键：按文件名升序排序（字符串比较）
+                // 重要：导出时强制按文件名排序，忽略用户的手动选择顺序
+                let imagesToExport = [...capturedImages];
                 imagesToExport.sort((a, b) => {
                     const nameA = a.fileName || '';
                     const nameB = b.fileName || '';
                     return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
                 });
-                console.log('已按文件名排序，首张文件名:', imagesToExport[0]?.fileName);
+                
+                if (imagesToExport.length === 0) { showToast('没有可导出的图片'); isExporting=false; exportBtn.disabled=false; exportBtn.style.opacity='1'; return; }
                 
                 if (imagesToExport.length > 200 && !confirm(`您选择了 ${imagesToExport.length} 张图片，生成PDF可能需要较长时间，是否继续？`)) {
                     isExporting=false; exportBtn.disabled=false; exportBtn.style.opacity='1'; return;
@@ -1613,7 +1620,7 @@
             });
         }
         
-        // ======================== OCR 相关（保持原有完整功能） ========================
+        // ======================== OCR 相关 ========================
         function setOCRLang(lang) {
             ocrLang = lang;
             document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
