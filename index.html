@@ -4,13 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(self)">
-    <title>Lens Scanner Pro - 智能扫描仪（按拍摄时间排序）</title>
+    <title>Lens Scanner Pro - 智能扫描仪</title>
     <link rel="manifest" href="./manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
-    <!-- EXIF 解析库，用于读取真实拍摄时间 -->
-    <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/mini.umd.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         
@@ -787,6 +785,7 @@
             border-color: #00ff88;
         }
     </style>
+<base target="_blank">
 </head>
 <body>
 
@@ -939,20 +938,14 @@
         // OCR 相关变量
         let ocrLang = 'chi_sim+eng';
         let ocrMode = 'standard';
+        let ocrWorker = null;
         let isOCRProcessing = false;
+        let ocrResults = {};
         
         // 手动选择 DPI
         let currentDPI = 300;
         
-        // ======================== 辅助函数 ========================
-        function showToast(msg) {
-            const toast = document.getElementById('toast');
-            toast.textContent = msg;
-            toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 2500);
-        }
-        
-        // ======================== 初始化 DPI 选择器 ========================
+        // ======================== 初始化 ========================
         function initDPISelector() {
             const dpiBtns = document.querySelectorAll('.dpi-btn');
             dpiBtns.forEach(btn => {
@@ -978,7 +971,6 @@
             return { width: widthPx, height: heightPx };
         }
         
-        // ======================== 相机初始化 ========================
         async function initCamera() {
             hideError();
             if (!window.isSecureContext) { showError('需要在安全环境下运行（HTTPS或localhost）', '请确保通过 https:// 访问'); return; }
@@ -1003,7 +995,93 @@
         function hideError() { document.getElementById('errorMessage').classList.remove('active'); }
         function retryCamera() { initCamera(); }
         
-        // ======================== 滤镜处理函数（与之前相同） ========================
+        // ======================== 上传图片（保留顺序，读取文件日期） ========================
+        function handleFileUpload(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+            const imageFiles = files.filter(f => f.type.startsWith('image/'));
+            if (imageFiles.length === 0) { showToast('请选择图片文件'); event.target.value = ''; return; }
+            pendingUploads = imageFiles;
+            currentUploadIndex = 0;
+            showToast(`开始处理 ${pendingUploads.length} 张照片...`);
+            batchProcessUploads();
+            event.target.value = '';
+        }
+        
+        async function batchProcessUploads() {
+            const processing = document.getElementById('processing');
+            const processingText = document.getElementById('processingText');
+            processing.classList.add('active');
+            let successCount = 0;
+            for (let i = 0; i < pendingUploads.length; i++) {
+                const file = pendingUploads[i];
+                processingText.textContent = `正在处理第 ${i+1}/${pendingUploads.length} 张照片...`;
+                try {
+                    const { dataUrl, lastModified, name } = await readImageFile(file);
+                    let filteredImage = dataUrl;
+                    if (currentMode === 'whiteboard' || currentMode === 'document') {
+                        filteredImage = await applyFilterToImage(dataUrl, currentMode);
+                    }
+                    capturedImages.push({ 
+                        id: Date.now() + i, 
+                        data: filteredImage, 
+                        filter: currentMode, 
+                        timestamp: new Date().toLocaleString(),
+                        fileDate: lastModified,          // 毫秒时间戳，用于排序
+                        fileDateStr: new Date(lastModified).toLocaleString(),
+                        fileName: name
+                    });
+                    successCount++;
+                    if (i % 5 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+                } catch(e) { console.error(e); }
+            }
+            processing.classList.remove('active');
+            updateGalleryCount();
+            pendingUploads = [];
+            showToast(`成功添加 ${successCount} 张照片到相册`);
+        }
+        
+        function readImageFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve({
+                    dataUrl: e.target.result,
+                    lastModified: file.lastModified,
+                    name: file.name
+                });
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+        
+        function applyFilterToImage(imageData, filterType) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    if (filterType === 'original' || filterType === 'photo' || filterType === 'ocr') {
+                        resolve(canvas.toDataURL('image/jpeg', 0.95));
+                        return;
+                    }
+                    const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageDataObj.data;
+                    switch(filterType) {
+                        case 'whiteboard': applyWhiteboardFilter(data, canvas.width, canvas.height); break;
+                        case 'document': applyDocumentFilter(data, canvas.width, canvas.height); break;
+                        case 'gray': applyGrayscale(data); break;
+                        case 'bw': applyBlackWhite(data); break;
+                    }
+                    ctx.putImageData(imageDataObj, 0, 0);
+                    resolve(canvas.toDataURL('image/jpeg', 0.95));
+                };
+                img.src = imageData;
+            });
+        }
+        
         function applyWhiteboardFilter(data, w, h) {
             let totalBrightness = 0;
             for (let i = 0; i < data.length; i += 4) totalBrightness += (data[i] + data[i+1] + data[i+2]) / 3;
@@ -1071,114 +1149,6 @@
                     data[i+2] = Math.min(255, data[i+2] + (data[i+2] - max) * (s - 1));
                 }
             }
-        }
-        
-        async function applyFilterToImage(imageData, filterType) {
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
-                    if (filterType === 'original' || filterType === 'photo' || filterType === 'ocr') {
-                        resolve(canvas.toDataURL('image/jpeg', 0.95));
-                        return;
-                    }
-                    const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                    const data = imageDataObj.data;
-                    switch(filterType) {
-                        case 'whiteboard': applyWhiteboardFilter(data, canvas.width, canvas.height); break;
-                        case 'document': applyDocumentFilter(data, canvas.width, canvas.height); break;
-                        case 'gray': applyGrayscale(data); break;
-                        case 'bw': applyBlackWhite(data); break;
-                    }
-                    ctx.putImageData(imageDataObj, 0, 0);
-                    resolve(canvas.toDataURL('image/jpeg', 0.95));
-                };
-                img.src = imageData;
-            });
-        }
-        
-        // ======================== 上传图片（读取 EXIF 真实拍摄时间） ========================
-        async function readImageFile(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = async (e) => {
-                    const dataUrl = e.target.result;
-                    let photoTimestamp = file.lastModified; // 后备时间
-                    try {
-                        // 解析 EXIF 元数据
-                        const exif = await exifr.parse(dataUrl);
-                        if (exif) {
-                            // 优先使用原始拍摄时间 DateTimeOriginal，其次 CreateDate
-                            const exifDate = exif.DateTimeOriginal || exif.CreateDate;
-                            if (exifDate) {
-                                const timestamp = new Date(exifDate).getTime();
-                                if (!isNaN(timestamp)) {
-                                    photoTimestamp = timestamp;
-                                    console.log(`✅ 读取到真实拍摄时间: ${exifDate} -> ${new Date(timestamp).toLocaleString()}`);
-                                }
-                            }
-                        }
-                    } catch(err) {
-                        console.warn(`EXIF 解析失败 (${file.name}):`, err);
-                    }
-                    resolve({
-                        dataUrl: dataUrl,
-                        lastModified: photoTimestamp,
-                        name: file.name
-                    });
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-        }
-        
-        function handleFileUpload(event) {
-            const files = Array.from(event.target.files);
-            if (files.length === 0) return;
-            const imageFiles = files.filter(f => f.type.startsWith('image/'));
-            if (imageFiles.length === 0) { showToast('请选择图片文件'); event.target.value = ''; return; }
-            pendingUploads = imageFiles;
-            currentUploadIndex = 0;
-            showToast(`开始处理 ${pendingUploads.length} 张照片...`);
-            batchProcessUploads();
-            event.target.value = '';
-        }
-        
-        async function batchProcessUploads() {
-            const processing = document.getElementById('processing');
-            const processingText = document.getElementById('processingText');
-            processing.classList.add('active');
-            let successCount = 0;
-            for (let i = 0; i < pendingUploads.length; i++) {
-                const file = pendingUploads[i];
-                processingText.textContent = `正在处理第 ${i+1}/${pendingUploads.length} 张照片...`;
-                try {
-                    const { dataUrl, lastModified, name } = await readImageFile(file);
-                    let filteredImage = dataUrl;
-                    if (currentMode === 'whiteboard' || currentMode === 'document') {
-                        filteredImage = await applyFilterToImage(dataUrl, currentMode);
-                    }
-                    capturedImages.push({ 
-                        id: Date.now() + i, 
-                        data: filteredImage, 
-                        filter: currentMode, 
-                        timestamp: new Date().toLocaleString(),
-                        fileDate: lastModified,          // 真实拍摄时间戳
-                        fileDateStr: new Date(lastModified).toLocaleString(),
-                        fileName: name
-                    });
-                    successCount++;
-                    if (i % 5 === 0) await new Promise(resolve => setTimeout(resolve, 0));
-                } catch(e) { console.error(e); }
-            }
-            processing.classList.remove('active');
-            updateGalleryCount();
-            pendingUploads = [];
-            showToast(`成功添加 ${successCount} 张照片到相册`);
         }
         
         // ======================== 相机拍照 ========================
@@ -1267,7 +1237,7 @@
                 data: finalImage, 
                 filter: currentFilter, 
                 timestamp: new Date().toLocaleString(),
-                fileDate: now,
+                fileDate: now,               // 拍照时间作为文件日期
                 fileDateStr: new Date().toLocaleString(),
                 fileName: `camera_${now}.jpg`
             });
@@ -1459,7 +1429,7 @@
             capturedImages.forEach((img, index) => {
                 const item = document.createElement('div');
                 item.className = 'gallery-item';
-                // 显示文件名和日期（悬浮提示）
+                // 显示文件名和日期（可选，在图片上悬浮显示）
                 item.title = `${img.fileName || '拍照'} - ${img.fileDateStr || img.timestamp}`;
                 item.innerHTML = `<img src="${img.data}" alt="扫描件 ${index+1}">`;
                 item.onclick = (e) => {
@@ -1540,98 +1510,137 @@
             showToast(`已删除 ${sorted.length} 个，剩余 ${capturedImages.length} 个`);
         }
         
-        // ======================== 导出 PDF（按真实拍摄时间排序） ========================
+        // ======================== 导出 PDF（按时间排序） ========================
         async function exportPDF() {
-            if (isExporting) { showToast('正在导出中，请稍候...'); return; }
-            try {
-                isExporting = true;
-                const exportBtn = document.getElementById('exportPdfBtn');
-                exportBtn.disabled = true; exportBtn.style.opacity = '0.7';
-                if (typeof PDFLib === 'undefined') throw new Error('PDF库未加载');
-                
-                let imagesToExport = [];
-                if (selectedOrder.length > 0) {
-                    for (let idx of selectedOrder) {
-                        if (capturedImages[idx]) imagesToExport.push(capturedImages[idx]);
-                    }
-                } else {
-                    imagesToExport = [...capturedImages];
-                }
-                
-                if (imagesToExport.length === 0) { showToast('没有可导出的图片'); isExporting=false; exportBtn.disabled=false; exportBtn.style.opacity='1'; return; }
-                
-                // 关键：按真实拍摄时间（fileDate）升序排序（从旧到新）
-                imagesToExport.sort((a, b) => (a.fileDate || 0) - (b.fileDate || 0));
-                console.log('已按 EXIF 拍摄时间排序，首张时间:', new Date(imagesToExport[0]?.fileDate).toLocaleString());
-                
-                if (imagesToExport.length > 200 && !confirm(`您选择了 ${imagesToExport.length} 张图片，生成PDF可能需要较长时间，是否继续？`)) {
-                    isExporting=false; exportBtn.disabled=false; exportBtn.style.opacity='1'; return;
-                }
-                
-                const processing = document.getElementById('processing');
-                const processingText = document.getElementById('processingText');
-                processing.classList.add('active');
-                processingText.textContent = '正在初始化...';
-                const { PDFDocument } = PDFLib;
-                const pdfDoc = await PDFDocument.create();
-                const { width: a4Width, height: a4Height } = getA4CanvasSize(currentDPI);
-                processingText.textContent = `使用DPI: ${currentDPI}，按拍摄时间排序...`;
-                
-                for (let i = 0; i < imagesToExport.length; i++) {
-                    processingText.textContent = `正在处理第 ${i+1}/${imagesToExport.length} 页...`;
-                    if (i % 3 === 0) await new Promise(r => setTimeout(r, 10));
-                    try {
-                        const img = await loadImage(imagesToExport[i].data);
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-                        const imgRatio = img.width / img.height;
-                        const a4Ratio = a4Width / a4Height;
-                        let drawWidth, drawHeight, offsetX, offsetY;
-                        if (imgRatio > a4Ratio) {
-                            drawWidth = a4Width;
-                            drawHeight = a4Width / imgRatio;
-                            offsetX = 0;
-                            offsetY = (a4Height - drawHeight) / 2;
-                        } else {
-                            drawHeight = a4Height;
-                            drawWidth = a4Height * imgRatio;
-                            offsetX = (a4Width - drawWidth) / 2;
-                            offsetY = 0;
-                        }
-                        canvas.width = a4Width;
-                        canvas.height = a4Height;
-                        ctx.fillStyle = 'white';
-                        ctx.fillRect(0, 0, a4Width, a4Height);
-                        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-                        const jpegData = canvas.toDataURL('image/jpeg', 0.85);
-                        const jpegImage = await pdfDoc.embedJpg(jpegData.split(',')[1]);
-                        const page = pdfDoc.addPage([595.28, 841.89]);
-                        page.drawImage(jpegImage, { x: 0, y: 0, width: 595.28, height: 841.89 });
-                    } catch(err) { console.error(`第${i+1}张处理失败`, err); }
-                }
-                processingText.textContent = '正在生成PDF文件...';
-                const pdfBytes = await pdfDoc.save();
-                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `扫描文档_${new Date().toLocaleDateString().replace(/\//g,'-')}_${imagesToExport.length}页_${currentDPI}dpi.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-                processing.classList.remove('active');
-                showToast(`PDF导出成功！共 ${imagesToExport.length} 页，已按真实拍摄时间排序`);
-            } catch(err) {
-                console.error(err);
-                showToast('导出失败：' + err.message);
-                document.getElementById('processing').classList.remove('active');
-            } finally {
-                isExporting = false;
-                const btn = document.getElementById('exportPdfBtn');
-                if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    if (isExporting) { showToast('正在导出中，请稍候...'); return; }
+    try {
+        isExporting = true;
+        const exportBtn = document.getElementById('exportPdfBtn');
+        exportBtn.disabled = true; exportBtn.style.opacity = '0.7';
+        if (typeof PDFLib === 'undefined') throw new Error('PDF库未加载');
+
+        let imagesToExport = [];
+        if (selectedOrder.length > 0) {
+            for (let idx of selectedOrder) {
+                if (capturedImages[idx]) imagesToExport.push(capturedImages[idx]);
             }
+        } else {
+            imagesToExport = [...capturedImages];
         }
-        
+
+        if (imagesToExport.length === 0) { showToast('没有可导出的图片'); isExporting=false; exportBtn.disabled=false; exportBtn.style.opacity='1'; return; }
+
+        // ========== 按文件名日期排序（从旧到新） ==========
+        function extractDateFromFilename(filename) {
+            if (!filename) return 0;
+            const name = filename.replace(/\.[^/.]+$/, '');
+
+            // 匹配各种日期格式
+            const patterns = [
+                /(\d{4})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})/,
+                /(\d{4})(\d{2})(\d{2})[-_]?(\d{2})[-_]?(\d{2})[-_]?(\d{2})/,
+                /(\d{13})/,
+                /(\d{4})[-_]?(\d{2})[-_]?(\d{2})/,
+            ];
+
+            for (let pattern of patterns) {
+                const match = name.match(pattern);
+                if (match) {
+                    if (match[1] && match[1].length === 13) {
+                        return parseInt(match[1]);
+                    } else if (match[0].length >= 8) {
+                        const digits = match[0].replace(/\D/g, '');
+                        if (digits.length >= 8) {
+                            return parseInt(digits.padEnd(14, '0'));
+                        }
+                    }
+                }
+            }
+            return 0;
+        }
+
+        imagesToExport.forEach(img => {
+            img.sortKey = extractDateFromFilename(img.fileName);
+            if (img.sortKey === 0 && img.fileDate) {
+                img.sortKey = img.fileDate;
+            }
+        });
+
+        imagesToExport.sort((a, b) => a.sortKey - b.sortKey);
+
+        console.log('=== PDF导出排序顺序（按文件名日期）===');
+        imagesToExport.forEach((img, idx) => {
+            console.log(`${idx + 1}. ${img.fileName} (排序键: ${img.sortKey})`);
+        });
+        // ==================================================
+
+        if (imagesToExport.length > 200 && !confirm(`您选择了 ${imagesToExport.length} 张图片，生成PDF可能需要较长时间，是否继续？`)) {
+            isExporting=false; exportBtn.disabled=false; exportBtn.style.opacity='1'; return;
+        }
+
+        const processing = document.getElementById('processing');
+        const processingText = document.getElementById('processingText');
+        processing.classList.add('active');
+        processingText.textContent = '正在初始化...';
+        const { PDFDocument } = PDFLib;
+        const pdfDoc = await PDFDocument.create();
+        const { width: a4Width, height: a4Height } = getA4CanvasSize(currentDPI);
+        processingText.textContent = `使用DPI: ${currentDPI} (${a4Width}×${a4Height})，共${imagesToExport.length}页，按文件名日期排序...`;
+
+        for (let i = 0; i < imagesToExport.length; i++) {
+            processingText.textContent = `正在处理第 ${i+1}/${imagesToExport.length} 页 (DPI:${currentDPI})...`;
+            if (i % 3 === 0) await new Promise(r => setTimeout(r, 10));
+            try {
+                const img = await loadImage(imagesToExport[i].data);
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const imgRatio = img.width / img.height;
+                const a4Ratio = a4Width / a4Height;
+                let drawWidth, drawHeight, offsetX, offsetY;
+                if (imgRatio > a4Ratio) {
+                    drawWidth = a4Width;
+                    drawHeight = a4Width / imgRatio;
+                    offsetX = 0;
+                    offsetY = (a4Height - drawHeight) / 2;
+                } else {
+                    drawHeight = a4Height;
+                    drawWidth = a4Height * imgRatio;
+                    offsetX = (a4Width - drawWidth) / 2;
+                    offsetY = 0;
+                }
+                canvas.width = a4Width;
+                canvas.height = a4Height;
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, a4Width, a4Height);
+                ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+                const jpegData = canvas.toDataURL('image/jpeg', 0.85);
+                const jpegImage = await pdfDoc.embedJpg(jpegData.split(',')[1]);
+                const page = pdfDoc.addPage([595.28, 841.89]);
+                page.drawImage(jpegImage, { x: 0, y: 0, width: 595.28, height: 841.89 });
+            } catch(err) { console.error(`处理第${i+1}张失败`, err); }
+        }
+        processingText.textContent = '正在生成PDF文件...';
+        const pdfBytes = await pdfDoc.save();
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `扫描文档_${new Date().toLocaleDateString().replace(/\//g,'-')}_${imagesToExport.length}页_${currentDPI}dpi.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+        processing.classList.remove('active');
+        showToast(`PDF导出成功！共 ${imagesToExport.length} 页，DPI:${currentDPI}，已按文件名日期排序`);
+    } catch(err) {
+        console.error(err);
+        showToast('导出失败：' + err.message);
+        document.getElementById('processing').classList.remove('active');
+    } finally {
+        isExporting = false;
+        const btn = document.getElementById('exportPdfBtn');
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }
+}
         function loadImage(src) {
             return new Promise((resolve, reject) => {
                 const img = new Image();
@@ -1641,7 +1650,14 @@
             });
         }
         
-        // ======================== OCR 相关（保持原有完整功能） ========================
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2500);
+        }
+        
+        // ======================== OCR 相关（保持原有） ========================
         function setOCRLang(lang) {
             ocrLang = lang;
             document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
@@ -1685,6 +1701,7 @@
                 const result = await Tesseract.recognize(canvas, ocrLang, config);
                 const time = (Date.now() - start) / 1000;
                 updateOCRResult(result.data.text, time);
+                ocrResults[currentImage] = { text: result.data.text, time, lang: ocrLang, mode: ocrMode, timestamp: new Date().toLocaleString() };
                 processing.classList.remove('active');
                 showToast(`OCR识别完成！用时 ${time.toFixed(2)} 秒`);
                 openOCR();
@@ -1798,7 +1815,7 @@
             return lines;
         }
         
-        // ======================== 其他初始化 ========================
+        // ======================== 其他 ========================
         let resizeTimeout;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimeout);
