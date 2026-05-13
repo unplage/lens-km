@@ -888,5 +888,16 @@
     document.addEventListener('DOMContentLoaded',()=>{ setTimeout(initCamera,100); initDPISelector(); document.addEventListener('touchmove',(e)=>{ if(e.target.closest('.gallery-grid')||e.target.closest('.filter-bar')||e.target.closest('.ocr-text-container')) return; e.preventDefault(); },{passive:false}); });
     document.addEventListener('keydown',(e)=>{ if(e.code==='Space'&&isCameraReady){ e.preventDefault(); capture(); } if(e.code==='Enter'&&document.getElementById('previewContainer').classList.contains('active')){ e.preventDefault(); confirmAndAdd(); } });
 </script>
+<script>
+  if ('serviceWorker' in navigator) {
+    // 注意：如果站点在子目录（如 /project/），注册路径需要包含子目录前缀
+    // 一般使用相对路径 './sv.js' 或绝对路径 '/project/sv.js'
+    navigator.serviceWorker.register('./sv.js').then(reg => {
+      console.log('Service Worker 注册成功，作用域:', reg.scope);
+    }).catch(err => {
+      console.error('Service Worker 注册失败:', err);
+    });
+  }
+</script>
 </body>
 </html>
