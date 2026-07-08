@@ -1,186 +1,243 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=(self)">
-    <title>Lens Scanner Pro - 完整功能版（可编辑文件名排序）</title>
-    <link rel="manifest" href="./manifest.json">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
-    <style>
-        /* 完整样式（与之前相同，确保所有元素可见） */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        * { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-        body { font-family: 'Inter', sans-serif; background: #000; overflow: hidden; margin: 0; padding: 0; }
-        .camera-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10; }
-        #video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(1); display: none; }
-        #video.active { display: block; }
-        .scan-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; display: none; }
-        .scan-overlay.active { display: block; }
-        .corner-marker { position: absolute; width: 40px; height: 40px; border: 3px solid #00ff88; transition: all 0.3s ease; box-shadow: 0 0 10px rgba(0,255,136,0.5); }
-        .corner-tl { top: 20%; left: 10%; border-right: none; border-bottom: none; }
-        .corner-tr { top: 20%; right: 10%; border-left: none; border-bottom: none; }
-        .corner-bl { bottom: 20%; left: 10%; border-right: none; border-top: none; }
-        .corner-br { bottom: 20%; right: 10%; border-left: none; border-top: none; }
-        .scan-line { position: absolute; top: 20%; left: 10%; right: 10%; height: 2px; background: linear-gradient(90deg, transparent, #00ff88, transparent); animation: scan 2s linear infinite; opacity: 0.6; }
-        @keyframes scan { 0% { top: 20%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 80%; opacity: 0; } }
-        .shutter-btn { width: 80px; height: 80px; border-radius: 50%; background: white; border: 4px solid rgba(255,255,255,0.3); position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); cursor: pointer; transition: all 0.1s; z-index: 30; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-        .shutter-btn:active { transform: translateX(-50%) scale(0.9); background: #ddd; }
-        .shutter-inner { width: 60px; height: 60px; border-radius: 50%; background: white; border: 2px solid #333; }
-        .mode-selector { position: absolute; bottom: 140px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 30; background: rgba(0,0,0,0.7); padding: 8px 16px; border-radius: 25px; backdrop-filter: blur(10px); }
-        .mode-btn { color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 15px; transition: all 0.3s; cursor: pointer; white-space: nowrap; }
-        .mode-btn.active { color: #00ff88; background: rgba(0,255,136,0.2); }
-        .gallery-btn { position: absolute; bottom: 50px; right: 30px; width: 50px; height: 50px; background: rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; z-index: 30; cursor: pointer; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.3); transition: transform 0.2s; }
-        .gallery-btn:active { transform: scale(0.95); }
-        .gallery-count { position: absolute; top: -5px; right: -5px; background: #00ff88; color: black; font-size: 11px; font-weight: bold; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #000; }
-        .preview-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #1a1a1a; z-index: 50; display: none; flex-direction: column; }
-        .preview-container.active { display: flex; }
-        .preview-header { padding: 15px 20px; background: #000; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; flex-shrink: 0; }
-        .preview-canvas-container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; overflow: auto; background: #0a0a0a; position: relative; }
-        #previewCanvas { max-width: 100%; max-height: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
-        .filter-bar { padding: 15px; background: #1a1a1a; display: flex; gap: 10px; overflow-x: auto; border-top: 1px solid #333; flex-shrink: 0; }
-        .filter-btn { min-width: 70px; padding: 10px; background: #2a2a2a; border: 2px solid transparent; border-radius: 12px; color: white; font-size: 12px; text-align: center; cursor: pointer; transition: all 0.2s; flex-shrink: 0; }
-        .filter-btn.active { border-color: #00ff88; background: #333; }
-        .filter-icon { width: 30px; height: 30px; margin: 0 auto 5px; background: #444; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
-        .action-bar { padding: 20px; background: #000; display: flex; gap: 15px; justify-content: center; flex-shrink: 0; }
-        .action-btn { flex: 1; max-width: 150px; padding: 15px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; font-size: 14px; display: flex; flex-direction: column; align-items: center; gap: 5px; }
-        .action-btn * { pointer-events: none; }
-        .btn-secondary { background: #333; color: white; }
-        .btn-primary { background: #00ff88; color: black; }
-        .gallery-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 60; display: none; flex-direction: column; }
-        .gallery-modal.active { display: flex; }
-        .gallery-grid { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; overflow-y: auto; }
-        .gallery-item { aspect-ratio: 3/4; background: #1a1a1a; position: relative; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; }
-        .gallery-item img { width: 100%; flex: 1; object-fit: cover; display: block; }
-        .gallery-item.selected::after { content: '✓'; position: absolute; top: 5px; right: 5px; width: 24px; height: 24px; background: #00ff88; color: black; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; z-index: 2; }
-        .filename-edit { background: #2a2a2a; color: #fff; font-size: 11px; text-align: center; padding: 6px 4px; border-top: 1px solid #444; white-space: nowrap; overflow-x: auto; cursor: text; user-select: text; font-family: monospace; min-height: 32px; }
-        .filename-edit:focus { outline: none; background: #3a3a3a; border-top-color: #00ff88; }
-        .gallery-actions { padding: 20px; background: #1a1a1a; display: flex; gap: 10px; border-top: 1px solid #333; flex-shrink: 0; }
-        .dpi-selector { padding: 12px 16px; background: #121212; border-bottom: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; flex-shrink: 0; }
-        .dpi-label { color: #aaa; font-size: 13px; }
-        .dpi-buttons { display: flex; gap: 8px; background: #1e1e1e; padding: 4px; border-radius: 40px; }
-        .dpi-btn { padding: 6px 16px; background: transparent; border: none; border-radius: 30px; color: #aaa; font-size: 13px; cursor: pointer; }
-        .dpi-btn.active { background: #00ff88; color: #000; }
-        .processing-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 100; display: none; flex-direction: column; align-items: center; justify-content: center; color: white; }
-        .processing-overlay.active { display: flex; }
-        .spinner { width: 50px; height: 50px; border: 3px solid #333; border-top-color: #00ff88; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .crop-frame { position: absolute; border: 2px solid #00ff88; box-shadow: 0 0 0 9999px rgba(0,0,0,0.8); display: none; pointer-events: none; }
-        .crop-frame.active { display: block; }
-        .crop-handle { position: absolute; width: 30px; height: 30px; background: #00ff88; border-radius: 50%; cursor: move; z-index: 10; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.5); pointer-events: auto; }
-        .flash-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; pointer-events: none; z-index: 40; transition: opacity 0.1s; }
-        .flash-overlay.active { opacity: 1; }
-        .hidden-canvas { display: none; }
-        .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(100px); background: rgba(0,0,0,0.9); color: white; padding: 12px 24px; border-radius: 25px; font-size: 14px; z-index: 200; opacity: 0; transition: all 0.3s; backdrop-filter: blur(10px); max-width: 80%; text-align: center; }
-        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
-        .error-message { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 30px; border-radius: 20px; text-align: center; z-index: 300; display: none; }
-        .error-message.active { display: block; }
-        .permission-btn { background: #00ff88; color: black; border: none; padding: 12px 24px; border-radius: 25px; font-weight: 600; margin-top: 15px; cursor: pointer; }
-        .zoom-controls { position: absolute; right: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 10px; z-index: 30; }
-        .zoom-btn { width: 40px; height: 40px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.3); border-radius: 50%; color: white; font-size: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(10px); }
-        .zoom-btn.active { background: #00ff88; color: black; border-color: #00ff88; }
-        .upload-btn { position: absolute; bottom: 50px; left: 30px; width: 50px; height: 50px; background: rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; z-index: 30; cursor: pointer; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.3); }
-        #fileInput { display: none; }
-        .progress-indicator { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 10px; font-size: 12px; z-index: 51; }
-        .ocr-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 80; display: none; flex-direction: column; }
-        .ocr-modal.active { display: flex; }
-        .ocr-content { flex: 1; display: flex; flex-direction: column; background: #1a1a1a; overflow: hidden; }
-        .ocr-text-container { flex: 1; padding: 20px; background: #0a0a0a; overflow-y: auto; }
-        #ocrText { width: 100%; height: 100%; background: transparent; color: white; border: none; outline: none; font-family: 'Inter', sans-serif; font-size: 16px; line-height: 1.5; resize: none; padding: 10px; border-radius: 8px; border: 1px solid #333; }
-        .ocr-actions { padding: 15px; background: #000; display: flex; gap: 10px; border-top: 1px solid #333; flex-shrink: 0; }
-        .ocr-info { padding: 10px 20px; background: #2a2a2a; color: #aaa; font-size: 12px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; }
-        .ocr-stats { display: flex; gap: 15px; }
-        .ocr-lang-selector, .ocr-mode-selector { display: flex; gap: 10px; padding: 10px 20px; background: #2a2a2a; border-bottom: 1px solid #333; overflow-x: auto; }
-        .lang-btn, .ocr-mode-btn { padding: 5px 12px; background: #333; color: white; border: 1px solid #444; border-radius: 20px; font-size: 12px; cursor: pointer; }
-        .lang-btn.active, .ocr-mode-btn.active { background: #00ff88; color: black; border-color: #00ff88; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta http-equiv="Permissions-Policy" content="camera=(self),microphone=(self)">
+<title>Lens Scanner Pro</title>
+<link rel="manifest" href="./manifest.json">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+<style>
+:root{--accent:#00ff88;--accent-dim:rgba(0,255,136,0.2);--bg:#000;--bg2:#1a1a1a;--bg3:#2a2a2a;--bg4:#0a0a0a;--text:#fff;--text2:#aaa;--border:#333;--radius:12px}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+*{-webkit-tap-highlight-color:transparent;touch-action:manipulation;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:var(--bg);overflow:hidden;margin:0;padding:0}
+.camera-container{position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:10}
+#video{width:100%;height:100%;object-fit:cover;transform:scaleX(1);display:none}
+#video.active{display:block}
+.scan-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:20;display:none}
+.scan-overlay.active{display:block}
+.corner-marker{position:absolute;width:40px;height:40px;border:3px solid var(--accent);transition:all .3s ease;box-shadow:0 0 10px rgba(0,255,136,0.5)}
+.corner-tl{top:20%;left:10%;border-right:none;border-bottom:none}
+.corner-tr{top:20%;right:10%;border-left:none;border-bottom:none}
+.corner-bl{bottom:20%;left:10%;border-right:none;border-top:none}
+.corner-br{bottom:20%;right:10%;border-left:none;border-top:none}
+.scan-line{position:absolute;top:20%;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 2s linear infinite;opacity:.6}
+@keyframes scan{0%{top:20%;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:80%;opacity:0}}
+.shutter-btn{width:80px;height:80px;border-radius:50%;background:white;border:4px solid rgba(255,255,255,0.3);position:absolute;bottom:40px;left:50%;transform:translateX(-50%);cursor:pointer;transition:all .1s;z-index:30;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 15px rgba(0,0,0,0.3)}
+.shutter-btn:active{transform:translateX(-50%) scale(0.9);background:#ddd}
+.shutter-inner{width:60px;height:60px;border-radius:50%;background:white;border:2px solid #333}
+.mode-selector{position:absolute;bottom:140px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:30;background:rgba(0,0,0,0.7);padding:8px 16px;border-radius:25px;backdrop-filter:blur(10px)}
+.mode-btn{color:rgba(255,255,255,0.6);font-size:12px;font-weight:500;padding:6px 12px;border-radius:15px;transition:all .3s;cursor:pointer;white-space:nowrap}
+.mode-btn.active{color:var(--accent);background:var(--accent-dim)}
+.gallery-btn{position:absolute;bottom:50px;right:30px;width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:white;z-index:30;cursor:pointer;backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.3);transition:transform .2s}
+.gallery-btn:active{transform:scale(0.95)}
+.gallery-count{position:absolute;top:-5px;right:-5px;background:var(--accent);color:black;font-size:11px;font-weight:bold;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #000}
+.upload-btn{position:absolute;bottom:50px;left:30px;width:50px;height:50px;background:rgba(255,255,255,0.2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:white;z-index:30;cursor:pointer;backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.3)}
+#fileInput{display:none}
+.preview-container{position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg2);z-index:50;display:none;flex-direction:column}
+.preview-container.active{display:flex}
+.preview-header{padding:15px 20px;background:var(--bg);display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);flex-shrink:0}
+.preview-canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;background:var(--bg4);position:relative}
+#previewCanvas{max-width:100%;max-height:100%;box-shadow:0 10px 40px rgba(0,0,0,0.5)}
+.filter-bar{padding:15px;background:var(--bg2);display:flex;gap:10px;overflow-x:auto;border-top:1px solid var(--border);flex-shrink:0}
+.filter-btn{min-width:70px;padding:10px;background:var(--bg3);border:2px solid transparent;border-radius:var(--radius);color:white;font-size:12px;text-align:center;cursor:pointer;transition:all .2s;flex-shrink:0}
+.filter-btn.active{border-color:var(--accent);background:#333}
+.filter-icon{width:30px;height:30px;margin:0 auto 5px;background:#444;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.option-bar{padding:10px 20px;background:var(--bg);display:flex;gap:12px;align-items:center;flex-wrap:wrap;flex-shrink:0;border-top:1px solid var(--border)}
+.toggle-btn{padding:6px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid var(--border);color:var(--text2);background:var(--bg3);transition:all .2s}
+.toggle-btn.active{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.action-bar{padding:20px;background:var(--bg);display:flex;gap:15px;justify-content:center;flex-shrink:0}
+.action-btn{flex:1;max-width:150px;padding:15px;border-radius:var(--radius);font-weight:600;cursor:pointer;transition:all .2s;border:none;font-size:14px;display:flex;flex-direction:column;align-items:center;gap:5px}
+.action-btn:active{transform:scale(0.96)}
+.action-btn *{pointer-events:none}
+.btn-secondary{background:var(--bg3);color:white}
+.btn-primary{background:var(--accent);color:black}
+.gallery-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:60;display:none;flex-direction:column}
+.gallery-modal.active{display:flex}
+.gallery-grid{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:2px;overflow-y:auto;align-content:start}
+.gallery-item{aspect-ratio:3/4;background:var(--bg2);position:relative;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;transition:opacity .15s}
+.gallery-item.dragging{opacity:.4}
+.gallery-item.drag-over{border:2px solid var(--accent)}
+.gallery-item img{width:100%;flex:1;object-fit:cover;display:block;pointer-events:none}
+.gallery-item.selected::after{content:'\2713';position:absolute;top:5px;right:5px;width:24px;height:24px;background:var(--accent);color:black;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:14px;z-index:2}
+.gallery-item .ocr-badge{position:absolute;bottom:36px;right:4px;background:rgba(0,0,0,0.7);color:var(--accent);font-size:9px;padding:2px 6px;border-radius:8px;z-index:2;pointer-events:none}
+.filename-edit{background:var(--bg3);color:var(--text);font-size:11px;text-align:center;padding:6px 4px;border-top:1px solid var(--border);white-space:nowrap;overflow-x:auto;cursor:text;user-select:text;font-family:monospace;min-height:32px;pointer-events:auto}
+.filename-edit:focus{outline:none;background:#3a3a3a;border-top-color:var(--accent)}
+.dpi-selector{padding:12px 16px;background:#121212;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;flex-shrink:0}
+.dpi-label{color:var(--text2);font-size:13px}
+.dpi-buttons{display:flex;gap:8px;background:#1e1e1e;padding:4px;border-radius:40px}
+.dpi-btn{padding:6px 16px;background:transparent;border:none;border-radius:30px;color:var(--text2);font-size:13px;cursor:pointer}
+.dpi-btn.active{background:var(--accent);color:#000}
+.progress-wrap{padding:0 16px 12px;background:#121212;display:none;flex-shrink:0}
+.progress-wrap.active{display:block}
+progress{width:100%;height:6px;border-radius:3px;overflow:hidden;appearance:none;-webkit-appearance:none}
+progress::-webkit-progress-bar{background:var(--border);border-radius:3px}
+progress::-webkit-progress-value{background:var(--accent);border-radius:3px}
+.progress-text{font-size:11px;color:var(--text2);margin-top:4px;text-align:center}
+.gallery-actions{padding:20px;background:var(--bg2);display:flex;gap:10px;border-top:1px solid var(--border);flex-shrink:0}
+.processing-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:100;display:none;flex-direction:column;align-items:center;justify-content:center;color:white}
+.processing-overlay.active{display:flex}
+.spinner{width:50px;height:50px;border:3px solid #333;border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.crop-frame{position:absolute;border:2px solid var(--accent);box-shadow:0 0 0 9999px rgba(0,0,0,0.8);display:none;pointer-events:none;z-index:5}
+.crop-frame.active{display:block}
+.crop-handle{position:absolute;width:30px;height:30px;background:var(--accent);border-radius:50%;cursor:move;z-index:10;border:3px solid white;box-shadow:0 2px 10px rgba(0,0,0,0.5);pointer-events:auto}
+.correct-handle{position:absolute;width:22px;height:22px;background:#ff6b6b;border-radius:50%;cursor:move;z-index:6;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.6);pointer-events:auto;transform:translate(-50%,-50%)}
+.correct-handle::after{content:attr(data-label);position:absolute;left:28px;top:50%;transform:translateY(-50%);color:white;font-size:11px;font-weight:600;background:rgba(0,0,0,0.7);padding:2px 8px;border-radius:4px;white-space:nowrap}
+.flash-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:white;opacity:0;pointer-events:none;z-index:40;transition:opacity .1s}
+.flash-overlay.active{opacity:1}
+.hidden-canvas{display:none}
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(100px);background:rgba(0,0,0,0.9);color:white;padding:12px 24px;border-radius:25px;font-size:14px;z-index:200;opacity:0;transition:all .3s;backdrop-filter:blur(10px);max-width:80%;text-align:center;pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.error-box{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.9);color:white;padding:30px;border-radius:20px;text-align:center;z-index:300;display:none}
+.error-box.active{display:block}
+.permission-btn{background:var(--accent);color:black;border:none;padding:12px 24px;border-radius:25px;font-weight:600;margin-top:15px;cursor:pointer}
+.zoom-controls{position:absolute;right:20px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px;z-index:30}
+.zoom-btn{width:40px;height:40px;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.3);border-radius:50%;color:white;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(10px)}
+.zoom-btn.active{background:var(--accent);color:black;border-color:var(--accent)}
+.progress-indicator{position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.7);color:white;padding:5px 10px;border-radius:10px;font-size:12px;z-index:51}
+.ocr-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:var(--bg);z-index:80;display:none;flex-direction:column}
+.ocr-modal.active{display:flex}
+.ocr-content{flex:1;display:flex;flex-direction:column;background:var(--bg2);overflow:hidden}
+.ocr-text-wrap{flex:1;padding:20px;background:var(--bg4);overflow-y:auto}
+#ocrText{width:100%;height:100%;background:transparent;color:white;border:none;outline:none;font-family:'Inter',sans-serif;font-size:16px;line-height:1.5;resize:none;padding:10px;border-radius:8px;border:1px solid var(--border)}
+.ocr-actions{padding:15px;background:var(--bg);display:flex;gap:10px;border-top:1px solid var(--border);flex-shrink:0}
+.ocr-info{padding:10px 20px;background:var(--bg3);color:var(--text2);font-size:12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between}
+.ocr-stats{display:flex;gap:15px}
+.ocr-engine-selector,.ocr-lang-selector,.ocr-mode-selector{display:flex;gap:10px;padding:10px 20px;background:var(--bg3);border-bottom:1px solid var(--border);overflow-x:auto;flex-wrap:wrap;align-items:center}
+.engine-btn,.lang-btn,.ocr-mode-btn{padding:5px 12px;background:#333;color:white;border:1px solid #444;border-radius:20px;font-size:12px;cursor:pointer;transition:all .2s}
+.engine-btn.active,.lang-btn.active,.ocr-mode-btn.active{background:var(--accent);color:black;border-color:var(--accent)}
+.glm-config{width:100%;padding:10px 20px;background:#121212;border-bottom:1px solid var(--border);display:none;flex-wrap:wrap;gap:10px;align-items:center}
+.glm-config.active{display:flex}
+.glm-key-input{flex:1;min-width:200px;padding:8px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:white;font-size:13px;outline:none}
+.glm-key-input:focus{border-color:var(--accent)}
+.glm-remember{display:flex;align-items:center;gap:6px;color:var(--text2);font-size:12px;cursor:pointer}
+.glm-remember input{accent-color:var(--accent)}
+.glm-status{font-size:11px;color:var(--text2);padding:4px 12px}
+</style>
 </head>
 <body>
 
 <div class="camera-container" id="cameraContainer">
-    <video id="video" autoplay playsinline muted></video>
-    <div class="scan-overlay" id="scanOverlay">
-        <div class="corner-marker corner-tl"></div><div class="corner-marker corner-tr"></div>
-        <div class="corner-marker corner-bl"></div><div class="corner-marker corner-br"></div>
-        <div class="scan-line"></div>
-    </div>
-    <div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-30 bg-gradient-to-b from-black/70 to-transparent">
-        <button onclick="toggleFlash()" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-        </button>
-        <div class="text-white font-semibold text-sm tracking-wide">Lens Scanner</div>
-        <button onclick="switchCamera()" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-content-center text-white border border-white/20">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-        </button>
-    </div>
-    <div class="zoom-controls"><button class="zoom-btn active" onclick="setZoom(1)" id="zoom1">1x</button><button class="zoom-btn" onclick="setZoom(2)" id="zoom2">2x</button></div>
-    <div class="mode-selector">
-        <div class="mode-btn active" onclick="setMode('whiteboard', this)">白板</div>
-        <div class="mode-btn" onclick="setMode('document', this)">文档</div>
-        <div class="mode-btn" onclick="setMode('photo', this)">照片</div>
-        <div class="mode-btn" onclick="setMode('business', this)">名片</div>
-        <div class="mode-btn" onclick="setMode('ocr', this)">OCR识别</div>
-    </div>
-    <label class="upload-btn" for="fileInput" title="上传多张照片">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-    </label>
-    <input type="file" id="fileInput" accept="image/*" multiple onchange="handleFileUpload(event)">
-    <div class="shutter-btn" onclick="capture()"><div class="shutter-inner"></div></div>
-    <div class="gallery-btn" onclick="openGallery()">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-        <div class="gallery-count" id="galleryCount" style="display: none;">0</div>
-    </div>
+<video id="video" autoplay playsinline muted></video>
+<div class="scan-overlay" id="scanOverlay">
+  <div class="corner-marker corner-tl"></div><div class="corner-marker corner-tr"></div>
+  <div class="corner-marker corner-bl"></div><div class="corner-marker corner-br"></div>
+  <div class="scan-line"></div>
+</div>
+<div class="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-30 bg-gradient-to-b from-black/70 to-transparent">
+  <button data-cmd="toggleFlash" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+  </button>
+  <div class="text-white font-semibold text-sm tracking-wide">Lens Scanner</div>
+  <button data-cmd="switchCamera" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+  </button>
+</div>
+<div class="zoom-controls"><button data-cmd="setZoom" data-zoom="1" class="zoom-btn active" id="zoom1">1x</button><button data-cmd="setZoom" data-zoom="2" class="zoom-btn" id="zoom2">2x</button></div>
+<div class="mode-selector">
+  <div data-cmd="setMode" data-mode="whiteboard" class="mode-btn active">白板</div>
+  <div data-cmd="setMode" data-mode="document" class="mode-btn">文档</div>
+  <div data-cmd="setMode" data-mode="photo" class="mode-btn">照片</div>
+  <div data-cmd="setMode" data-mode="business" class="mode-btn">名片</div>
+  <div data-cmd="setMode" data-mode="ocr" class="mode-btn">OCR识别</div>
+</div>
+<label class="upload-btn" for="fileInput" title="上传多张照片">
+  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+</label>
+<input type="file" id="fileInput" accept="image/*" multiple>
+<div class="shutter-btn" data-cmd="capture"><div class="shutter-inner"></div></div>
+<div class="gallery-btn" data-cmd="openGallery">
+  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+  <div class="gallery-count" id="galleryCount" style="display:none">0</div>
+</div>
 </div>
 
 <div class="flash-overlay" id="flash"></div>
-<div class="error-message" id="errorMessage"><div class="text-lg font-bold mb-2">无法访问相机</div><div class="text-sm text-gray-300 mb-4" id="errorText"></div><button class="permission-btn" onclick="retryCamera()">重试</button></div>
+<div class="error-box" id="errorBox"><div class="text-lg font-bold mb-2">无法访问相机</div><div class="text-sm text-gray-300 mb-4" id="errorText"></div><button class="permission-btn" data-cmd="retryCamera">重试</button></div>
 
 <div class="preview-container" id="previewContainer">
-    <div class="progress-indicator" id="progressIndicator" style="display: none;"></div>
-    <div class="preview-header"><button onclick="closePreview(true)" class="text-white">取消</button><span class="text-white font-semibold">编辑</span><button onclick="confirmAndAdd()" class="text-[#00ff88]">完成</button></div>
-    <div class="preview-canvas-container" id="previewCanvasContainer">
-        <canvas id="previewCanvas"></canvas>
-        <div class="crop-frame" id="cropFrame">
-            <div class="crop-handle" style="top:-15px;left:-15px;" data-corner="tl"></div>
-            <div class="crop-handle" style="top:-15px;right:-15px;" data-corner="tr"></div>
-            <div class="crop-handle" style="bottom:-15px;left:-15px;" data-corner="bl"></div>
-            <div class="crop-handle" style="bottom:-15px;right:-15px;" data-corner="br"></div>
-        </div>
-    </div>
-    <div class="filter-bar">
-        <div class="filter-btn active" onclick="applyFilter('original',this)"><div class="filter-icon">O</div><div>原图</div></div>
-        <div class="filter-btn" onclick="applyFilter('whiteboard',this)"><div class="filter-icon">W</div><div>白板</div></div>
-        <div class="filter-btn" onclick="applyFilter('document',this)"><div class="filter-icon">D</div><div>文档</div></div>
-        <div class="filter-btn" onclick="applyFilter('gray',this)"><div class="filter-icon">G</div><div>灰度</div></div>
-        <div class="filter-btn" onclick="applyFilter('bw',this)"><div class="filter-icon">B</div><div>黑白</div></div>
-        <div class="filter-btn" onclick="applyFilter('magic',this)"><div class="filter-icon">✨</div><div>魔法</div></div>
-    </div>
-    <div class="action-bar">
-        <button class="action-btn btn-secondary" onclick="rotateImage()">旋转</button>
-        <button class="action-btn btn-secondary" onclick="toggleCrop()">裁剪</button>
-        <button class="action-btn btn-secondary" onclick="recognizeText()">OCR识别</button>
-        <button class="action-btn btn-primary" onclick="confirmAndAdd()">确认添加</button>
-    </div>
+<div class="progress-indicator" id="progressIndicator" style="display:none"></div>
+<div class="preview-header"><button data-cmd="closePreview" class="text-white">取消</button><span class="text-white font-semibold">编辑</span><button data-cmd="confirmAdd" class="text-[var(--accent)]">完成</button></div>
+<div class="preview-canvas-wrap" id="previewCanvasWrap">
+  <canvas id="previewCanvas"></canvas>
+  <div class="crop-frame" id="cropFrame">
+    <div class="crop-handle" style="top:-15px;left:-15px" data-corner="tl"></div>
+    <div class="crop-handle" style="top:-15px;right:-15px" data-corner="tr"></div>
+    <div class="crop-handle" style="bottom:-15px;left:-15px" data-corner="bl"></div>
+    <div class="crop-handle" style="bottom:-15px;right:-15px" data-corner="br"></div>
+  </div>
+</div>
+<div class="option-bar">
+  <span class="text-xs text-[var(--text2)]">自动校正:</span>
+  <button data-cmd="toggleCorrect" class="toggle-btn active" id="correctToggle">开</button>
+  <span class="text-xs text-[var(--text2)] ml-2">撤销:</span>
+  <button data-cmd="undo" class="toggle-btn" id="undoBtn">↩</button>
+</div>
+<div class="filter-bar">
+  <div data-cmd="applyFilter" data-filter="original" class="filter-btn active"><div class="filter-icon">O</div><div>原图</div></div>
+  <div data-cmd="applyFilter" data-filter="whiteboard" class="filter-btn"><div class="filter-icon">W</div><div>白板</div></div>
+  <div data-cmd="applyFilter" data-filter="document" class="filter-btn"><div class="filter-icon">D</div><div>文档</div></div>
+  <div data-cmd="applyFilter" data-filter="gray" class="filter-btn"><div class="filter-icon">G</div><div>灰度</div></div>
+  <div data-cmd="applyFilter" data-filter="bw" class="filter-btn"><div class="filter-icon">B</div><div>黑白</div></div>
+  <div data-cmd="applyFilter" data-filter="auto" class="filter-btn"><div class="filter-icon">A</div><div>自动</div></div>
+  <div data-cmd="applyFilter" data-filter="deep" class="filter-btn"><div class="filter-icon">D+</div><div>深对比</div></div>
+  <div data-cmd="applyFilter" data-filter="brighten" class="filter-btn"><div class="filter-icon">☀</div><div>提亮</div></div>
+  <div data-cmd="applyFilter" data-filter="invert" class="filter-btn"><div class="filter-icon">↔</div><div>反色</div></div>
+  <div data-cmd="applyFilter" data-filter="denoise" class="filter-btn"><div class="filter-icon">◎</div><div>降噪</div></div>
+  <div data-cmd="applyFilter" data-filter="magic" class="filter-btn"><div class="filter-icon">✨</div><div>魔法</div></div>
+</div>
+<div class="action-bar">
+  <button class="action-btn btn-secondary" data-cmd="rotateImage"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>旋转</button>
+  <button class="action-btn btn-secondary" data-cmd="toggleCrop">裁剪</button>
+  <button class="action-btn btn-secondary" data-cmd="recognizeText">OCR</button>
+  <button class="action-btn btn-primary" data-cmd="confirmAdd">确认添加</button>
+</div>
 </div>
 
 <div class="ocr-modal" id="ocrModal">
-    <div class="preview-header"><button onclick="closeOCR()">返回</button><span>OCR文字识别</span><button onclick="copyOCRText()">复制</button></div>
-    <div class="ocr-lang-selector"><button class="lang-btn active" onclick="setOCRLang('chi_sim+eng')">中文+英文</button><button class="lang-btn" onclick="setOCRLang('chi_sim')">中文</button><button class="lang-btn" onclick="setOCRLang('eng')">英文</button><button class="lang-btn" onclick="setOCRLang('jpn')">日语</button><button class="lang-btn" onclick="setOCRLang('kor')">韩语</button></div>
-    <div class="ocr-mode-selector"><button class="ocr-mode-btn active" onclick="setOCRMode('standard')">标准识别</button><button class="ocr-mode-btn" onclick="setOCRMode('fast')">快速识别</button><button class="ocr-mode-btn" onclick="setOCRMode('accurate')">精确识别</button></div>
-    <div class="ocr-content"><div class="ocr-info"><div>识别结果</div><div class="ocr-stats"><span id="ocrCharCount">字符:0</span><span id="ocrTime">用时:0s</span></div></div><div class="ocr-text-container"><textarea id="ocrText" placeholder="识别结果将显示在这里..."></textarea></div><div class="ocr-actions"><button class="action-btn btn-secondary" onclick="saveOCRText()">保存为TXT</button><button class="action-btn btn-primary" onclick="exportOCRToPDF()">导出为PDF</button></div></div>
+<div class="preview-header"><button data-cmd="closeOCR">返回</button><span>OCR文字识别</span><button data-cmd="copyOCRText">复制</button></div>
+<div class="ocr-engine-selector">
+  <span class="text-xs text-[var(--text2)] mr-1">引擎:</span>
+  <button data-cmd="setEngine" data-engine="tesseract" class="engine-btn active">Tesseract</button>
+  <button data-cmd="setEngine" data-engine="glm" class="engine-btn">GLM-4.6V-Flash</button>
+</div>
+<div class="glm-config" id="glmConfig">
+  <input type="password" class="glm-key-input" id="glmKeyInput" placeholder="输入智谱 API Key (zhipu_...)">
+  <label class="glm-remember"><input type="checkbox" id="glmRemember"> 记住</label>
+  <span class="glm-status" id="glmStatus">等待输入 Key</span>
+</div>
+<div class="ocr-lang-selector">
+  <button data-cmd="setLang" data-lang="chi_sim+eng" class="lang-btn active">中文+英文</button>
+  <button data-cmd="setLang" data-lang="chi_sim" class="lang-btn">中文</button>
+  <button data-cmd="setLang" data-lang="eng" class="lang-btn">英文</button>
+  <button data-cmd="setLang" data-lang="jpn" class="lang-btn">日语</button>
+  <button data-cmd="setLang" data-lang="kor" class="lang-btn">韩语</button>
+</div>
+<div class="ocr-mode-selector">
+  <button data-cmd="setOCRMode" data-mode="standard" class="ocr-mode-btn active">标准</button>
+  <button data-cmd="setOCRMode" data-mode="fast" class="ocr-mode-btn">快速</button>
+  <button data-cmd="setOCRMode" data-mode="accurate" class="ocr-mode-btn">精确</button>
+</div>
+<div class="ocr-content"><div class="ocr-info"><div>识别结果</div><div class="ocr-stats"><span id="ocrCharCount">字符:0</span><span id="ocrTime">用时:0s</span><span id="ocrTokens" style="display:none">Token:0</span></div></div><div class="ocr-text-wrap"><textarea id="ocrText" placeholder="识别结果将显示在这里..."></textarea></div><div class="ocr-actions"><button class="action-btn btn-secondary" data-cmd="saveOCRText">保存为TXT</button><button class="action-btn btn-primary" data-cmd="exportOCRToPDF">导出为PDF</button></div></div>
 </div>
 
 <div class="gallery-modal" id="galleryModal">
-    <div class="preview-header"><button onclick="closeGallery()">关闭</button><span>相册 (<span id="galleryTotal">0</span>)</span><button onclick="toggleSelectAll()" id="selectAllBtn">全选</button></div>
-    <div class="gallery-grid" id="galleryGrid"></div>
-    <div class="dpi-selector">
-        <span class="dpi-label">📄 导出分辨率 (DPI)</span>
-        <div class="dpi-buttons"><button class="dpi-btn" data-dpi="150">150</button><button class="dpi-btn" data-dpi="200">200</button><button class="dpi-btn" data-dpi="250">250</button><button class="dpi-btn active" data-dpi="300">300</button></div>
-        <button onclick="sortGalleryByDisplayName()" style="background:#2a2a2a; border:none; color:#0f0; padding:6px 12px; border-radius:20px;">📁 按编辑名排序</button>
-    </div>
-    <div class="gallery-actions"><button class="action-btn btn-secondary" onclick="deleteSelected()">删除选中</button><button class="action-btn btn-primary" id="exportPdfBtn" onclick="exportPDF()">导出 PDF (<span id="exportCount">0</span>)</button></div>
+<div class="preview-header"><button data-cmd="closeGallery">关闭</button><span>相册 (<span id="galleryTotal">0</span>)</span><button data-cmd="toggleSelectAll" id="selectAllBtn">全选</button></div>
+<div class="gallery-grid" id="galleryGrid"></div>
+<div class="dpi-selector">
+  <span class="dpi-label">导出分辨率 (DPI)</span>
+  <div class="dpi-buttons"><button data-cmd="setDPI" data-dpi="150" class="dpi-btn">150</button><button data-cmd="setDPI" data-dpi="200" class="dpi-btn">200</button><button data-cmd="setDPI" data-dpi="250" class="dpi-btn">250</button><button data-cmd="setDPI" data-dpi="300" class="dpi-btn active">300</button></div>
+  <button data-cmd="sortByName" class="dpi-btn" style="color:var(--accent);background:var(--bg3)">📁 按名排序</button>
+</div>
+<div class="progress-wrap" id="progressWrap">
+  <progress id="exportProgress" max="100" value="0"></progress>
+  <div class="progress-text" id="progressText">0%</div>
+</div>
+<div class="gallery-actions"><button class="action-btn btn-secondary" data-cmd="deleteSelected">删除选中</button><button class="action-btn btn-primary" data-cmd="exportPDF">导出 PDF (<span id="exportCount">0</span>)</button></div>
 </div>
 
 <div class="processing-overlay" id="processing"><div class="spinner"></div><div class="text-lg font-medium">正在处理...</div><div class="text-sm text-gray-400 mt-2" id="processingText"></div></div>
@@ -189,715 +246,1354 @@
 <canvas id="tempCanvas" class="hidden-canvas"></canvas>
 
 <script>
-    // ======================== 全局变量 ========================
-    let stream = null;
-    let currentMode = 'whiteboard';
-    let capturedImages = [];
-    let selectedOrder = [];
-    let currentImage = null;
-    let currentFilter = 'original';
-    let isCropping = false;
-    let cropCorners = { tl: {x:0,y:0}, tr: {x:1,y:0}, bl: {x:0,y:1}, br: {x:1,y:1} };
-    let activeHandle = null;
-    let videoTrack = null;
-    let currentZoom = 1;
-    let isCameraReady = false;
-    let isAllSelected = false;
-    let pendingUploads = [];
-    let currentUploadIndex = 0;
-    let isExporting = false;
-    let ocrLang = 'chi_sim+eng';
-    let ocrMode = 'standard';
-    let isOCRProcessing = false;
-    let currentDPI = 300;
-    
-    // ======================== 辅助函数 ========================
-    function showToast(msg) {
-        const toast = document.getElementById('toast');
-        toast.textContent = msg;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2500);
+/* ====================== LensApp ====================== */
+class LensApp {
+  constructor() {
+    this._state = {
+      stream: null, videoTrack: null, isCameraReady: false,
+      currentZoom: 1, currentMode: 'whiteboard',
+      currentFilter: 'original', currentImage: null, originalImage: null,
+      capturedImages: [], selectedIds: new Set(),
+      undoStack: [], undoMax: 20,
+      isCropping: false, activeHandle: null,
+      cropCorners: { tl: {x:0,y:0}, tr: {x:1,y:0}, bl: {x:0,y:1}, br: {x:1,y:1} },
+      isAutoCorrect: true, correctMode: false,
+      correctCorners: [], activeCorrectHandle: null,
+      ocrEngine: 'tesseract', ocrLang: 'chi_sim+eng', ocrMode: 'standard',
+      glmApiKey: '', glmRemember: false,
+      isOCRProcessing: false, currentDPI: 300,
+      isExporting: false, pendingUploads: [],
+      isAllSelected: false, dragId: null
+    };
+    this._db = null;
+    this._dbReady = this._openDB();
+    this._el = {};
+    this._initEls();
+    this._initEventDelegation();
+    this._restoreFromDB();
+    setTimeout(() => this._initCamera(), 100);
+    window.addEventListener('beforeunload', () => this._stopCamera());
+  }
+
+  /* ====================== DOM ====================== */
+  _initEls() {
+    const gid = id => this._el[id] = document.getElementById(id);
+    gid('video'); gid('scanOverlay'); gid('flash'); gid('errorBox'); gid('errorText');
+    gid('previewContainer'); gid('previewCanvas'); gid('previewCanvasWrap');
+    gid('cropFrame'); gid('processing'); gid('processingText'); gid('toast');
+    gid('processCanvas'); gid('tempCanvas'); gid('galleryGrid');
+    gid('galleryModal'); gid('galleryTotal'); gid('galleryCount');
+    gid('selectAllBtn'); gid('exportCount'); gid('fileInput');
+    gid('ocrModal'); gid('ocrText'); gid('ocrCharCount'); gid('ocrTime'); gid('ocrTokens');
+    gid('glmKeyInput'); gid('glmConfig'); gid('glmStatus'); gid('glmRemember');
+    gid('progressWrap'); gid('exportProgress'); gid('progressText');
+    gid('correctToggle'); gid('undoBtn'); gid('progressIndicator');
+  }
+
+  _initEventDelegation() {
+    const evtMap = {
+      click: this._onClick.bind(this),
+      change: this._onChange.bind(this),
+      keydown: this._onKeydown.bind(this),
+      touchmove: this._onTouchmove.bind(this)
+    };
+    for (const [ev, fn] of Object.entries(evtMap)) {
+      document.addEventListener(ev, fn);
     }
-    
-    function initDPISelector() {
-        document.querySelectorAll('.dpi-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                currentDPI = parseInt(btn.dataset.dpi);
-                document.querySelectorAll('.dpi-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                showToast(`DPI设为 ${currentDPI}`);
-            });
-        });
+  }
+
+  _onClick(e) {
+    const t = e.target.closest('[data-cmd]');
+    if (!t) return;
+    const cmd = t.dataset.cmd;
+    switch (cmd) {
+      case 'capture': this._capture(e); break;
+      case 'toggleFlash': this._toggleFlash(); break;
+      case 'switchCamera': this._switchCamera(); break;
+      case 'setZoom': this._setZoom(parseInt(t.dataset.zoom)); break;
+      case 'setMode': this._setMode(t.dataset.mode, t); break;
+      case 'openGallery': this._openGallery(); break;
+      case 'closeGallery': this._closeGallery(); break;
+      case 'closePreview': this._closePreview(true); break;
+      case 'confirmAdd': this._confirmAdd(); break;
+      case 'applyFilter': this._applyFilter(t.dataset.filter, t); break;
+      case 'rotateImage': this._rotateImage(); break;
+      case 'toggleCrop': this._toggleCrop(); break;
+      case 'toggleCorrect': this._toggleAutoCorrect(); break;
+      case 'undo': this._undo(); break;
+      case 'recognizeText': this._recognizeText(); break;
+      case 'closeOCR': this._closeOCR(); break;
+      case 'copyOCRText': this._copyOCRText(); break;
+      case 'saveOCRText': this._saveOCRText(); break;
+      case 'exportOCRToPDF': this._exportOCRToPDF(); break;
+      case 'setEngine': this._setOCREngine(t.dataset.engine, t); break;
+      case 'setLang': this._setOCRLang(t.dataset.lang, t); break;
+      case 'setOCRMode': this._setOCRMode(t.dataset.mode, t); break;
+      case 'setDPI': this._setDPI(parseInt(t.dataset.dpi), t); break;
+      case 'sortByName': this._sortByName(); break;
+      case 'toggleSelectAll': this._toggleSelectAll(); break;
+      case 'deleteSelected': this._deleteSelected(); break;
+      case 'exportPDF': this._exportPDF(); break;
+      case 'retryCamera': this._initCamera(); break;
     }
-    
-    function getA4CanvasSize(dpi) {
-        const inchPerMM = 1/25.4;
-        return { width: Math.round(210 * inchPerMM * dpi), height: Math.round(297 * inchPerMM * dpi) };
+  }
+
+  _onChange(e) {
+    if (e.target === this._el.fileInput) this._handleFileUpload(e);
+  }
+
+  _onKeydown(e) {
+    if (e.code === 'Space' && this._state.isCameraReady) { e.preventDefault(); this._capture(e); }
+    if (e.code === 'Enter' && this._el.previewContainer.classList.contains('active')) { e.preventDefault(); this._confirmAdd(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); this._undo(); }
+  }
+
+  _onTouchmove(e) {
+    if (e.target.closest('.gallery-grid') || e.target.closest('.filter-bar') || e.target.closest('.ocr-text-wrap')) return;
+    e.preventDefault();
+  }
+
+  /* ====================== Toast / UI ====================== */
+  _showToast(msg) {
+    const el = this._el.toast;
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+  }
+
+  _showProcessing(text) {
+    this._el.processing.classList.add('active');
+    if (text) this._el.processingText.textContent = text;
+  }
+
+  _hideProcessing() {
+    this._el.processing.classList.remove('active');
+    this._el.processingText.textContent = '';
+  }
+
+  _showError(title, text) {
+    this._el.errorBox.classList.add('active');
+    this._el.errorBox.querySelector('.text-lg').textContent = title;
+    this._el.errorText.textContent = text;
+  }
+
+  _hideError() { this._el.errorBox.classList.remove('active'); }
+
+  _updateGalleryCount() {
+    const n = this._state.capturedImages.length;
+    const el = this._el.galleryCount;
+    if (n > 0) { el.textContent = n > 99 ? '99+' : n; el.style.display = 'flex'; }
+    else el.style.display = 'none';
+  }
+
+  _escapeHtml(str) { return str.replace(/[&<>]/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[m])); }
+
+  /* ====================== Camera ====================== */
+  async _initCamera() {
+    this._hideError();
+    if (!window.isSecureContext) { this._showError('需要HTTPS或localhost',''); return; }
+    if (!navigator.mediaDevices?.getUserMedia) { this._showError('浏览器不支持相机',''); return; }
+    try {
+      this._stopCamera();
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false
+      });
+      this._state.stream = s;
+      const v = this._el.video;
+      v.srcObject = s;
+      await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = rej; setTimeout(() => rej('超时'), 10000); });
+      this._state.videoTrack = s.getVideoTracks()[0];
+      v.classList.add('active');
+      this._state.isCameraReady = true;
+      if (['whiteboard','document','ocr'].includes(this._state.currentMode)) this._el.scanOverlay.classList.add('active');
+      this._showToast('相机已就绪');
+    } catch (err) {
+      let msg = '相机权限被拒绝';
+      if (err.name === 'NotFoundError') msg = '未找到相机';
+      else if (err === '超时') msg = '相机启动超时';
+      this._showError('无法访问相机', msg);
     }
-    
-    // ======================== 相机初始化 ========================
-    async function initCamera() {
-        hideError();
-        if (!window.isSecureContext) { showError('需要HTTPS或localhost'); return; }
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showError('浏览器不支持相机'); return; }
-        try {
-            if (stream) stream.getTracks().forEach(t => t.stop());
-            const constraints = { video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false };
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-            const video = document.getElementById('video');
-            video.srcObject = stream;
-            await new Promise((resolve, reject) => { video.onloadedmetadata = resolve; video.onerror = reject; setTimeout(() => reject('超时'), 10000); });
-            videoTrack = stream.getVideoTracks()[0];
-            video.classList.add('active');
-            isCameraReady = true;
-            if (['whiteboard','document','ocr'].includes(currentMode)) document.getElementById('scanOverlay').classList.add('active');
-            showToast('相机已就绪');
-        } catch(err) { handleCameraError(err); }
+  }
+
+  _stopCamera() {
+    if (this._state.stream) {
+      this._state.stream.getTracks().forEach(t => t.stop());
+      this._state.stream = null;
+      this._state.videoTrack = null;
+      this._state.isCameraReady = false;
     }
-    function handleCameraError(err) { let msg='相机权限被拒绝'; if(err.name==='NotFoundError') msg='未找到相机'; showError('无法访问相机',msg); }
-    function showError(title, text) { document.getElementById('errorMessage').classList.add('active'); document.querySelector('#errorMessage .text-lg').textContent=title; document.getElementById('errorText').textContent=text; }
-    function hideError() { document.getElementById('errorMessage').classList.remove('active'); }
-    function retryCamera() { initCamera(); }
-    
-    // ======================== 滤镜核心算法（完整实现） ========================
-    function applyWhiteboardFilter(data, w, h) {
-        let totalBrightness = 0;
-        for (let i = 0; i < data.length; i += 4) totalBrightness += (data[i] + data[i+1] + data[i+2]) / 3;
-        const avg = totalBrightness / (data.length / 4);
-        const thresh = avg * 0.85;
-        for (let i = 0; i < data.length; i += 4) {
-            const b = (data[i] + data[i+1] + data[i+2]) / 3;
-            if (b > thresh) {
-                data[i] = data[i+1] = data[i+2] = 255;
-            } else {
-                const f = 1.5;
-                data[i] = Math.min(255, data[i] * f);
-                data[i+1] = Math.min(255, data[i+1] * f);
-                data[i+2] = Math.min(255, data[i+2] * f);
-            }
+  }
+
+  async _toggleFlash() {
+    const vt = this._state.videoTrack;
+    if (!vt) { this._showToast('相机未就绪'); return; }
+    try {
+      const cap = vt.getCapabilities();
+      if (cap.torch) {
+        const settings = vt.getSettings();
+        await vt.applyConstraints({ advanced: [{ torch: !settings.torch }] });
+        this._showToast(settings.torch ? '闪光灯已关闭' : '闪光灯已开启');
+      } else this._showToast('设备不支持闪光灯');
+    } catch(e) { this._showToast('闪光灯控制失败'); }
+  }
+
+  async _switchCamera() {
+    if (!this._state.stream) { this._showToast('相机未启动'); return; }
+    this._showProcessing('切换相机...');
+    const cur = this._state.stream.getVideoTracks()[0].getSettings().facingMode;
+    const next = cur === 'environment' ? 'user' : 'environment';
+    this._state.stream.getTracks().forEach(t => t.stop());
+    try {
+      const ns = await navigator.mediaDevices.getUserMedia({ video: { facingMode: next }, audio: false });
+      this._state.stream = ns;
+      this._state.videoTrack = ns.getVideoTracks()[0];
+      this._el.video.srcObject = ns;
+      this._hideProcessing();
+      this._showToast(next === 'environment' ? '后置相机' : '前置相机');
+    } catch(err) { this._hideProcessing(); this._showToast('切换失败'); this._initCamera(); }
+  }
+
+  _setZoom(level) {
+    this._state.currentZoom = level;
+    document.querySelectorAll('[data-cmd="setZoom"]').forEach(b => b.classList.remove('active'));
+    document.querySelector(`[data-cmd="setZoom"][data-zoom="${level}"]`).classList.add('active');
+    const vt = this._state.videoTrack;
+    if (vt && vt.getCapabilities().zoom) {
+      vt.applyConstraints({ advanced: [{ zoom: level }] }).then(() => this._showToast(`${level}x 变焦`)).catch(() => {});
+    } else {
+      this._el.video.style.transform = `scaleX(1) scale(${level})`;
+    }
+  }
+
+  _setMode(mode, el) {
+    this._state.currentMode = mode;
+    document.querySelectorAll('[data-cmd="setMode"]').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    if (['whiteboard','document','ocr'].includes(mode)) this._el.scanOverlay.classList.add('active');
+    else this._el.scanOverlay.classList.remove('active');
+    const names = { whiteboard:'白板模式', document:'文档模式', photo:'照片模式', business:'名片模式', ocr:'OCR模式' };
+    this._showToast(names[mode]);
+  }
+
+  /* ====================== Capture & Preview ====================== */
+  _capture(e) {
+    if (e) e.preventDefault();
+    if (!this._state.isCameraReady) { this._el.fileInput.click(); return; }
+    const flash = this._el.flash;
+    flash.classList.add('active'); setTimeout(() => flash.classList.remove('active'), 100);
+    const video = this._el.video;
+    const canvas = this._el.processCanvas;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const crop = { left: 0.1, top: 0.2, right: 0.9, bottom: 0.8 };
+    const vw = video.videoWidth || 1920, vh = video.videoHeight || 1080;
+    const sw = vw * (crop.right - crop.left), sh = vh * (crop.bottom - crop.top);
+    canvas.width = sw; canvas.height = sh;
+    ctx.drawImage(video, vw * crop.left, vh * crop.top, sw, sh, 0, 0, sw, sh);
+    const raw = canvas.toDataURL('image/jpeg', 1.0);
+    this._state.originalImage = raw;
+    this._state.currentImage = raw;
+    this._state.currentFilter = (this._state.currentMode === 'whiteboard' ? 'whiteboard' : (this._state.currentMode === 'document' ? 'document' : 'original'));
+    this._pushUndoState();
+    this._showPreview();
+    if (this._state.currentMode === 'ocr') setTimeout(() => this._recognizeText(), 500);
+  }
+
+  _showPreview() {
+    this._el.previewContainer.classList.add('active');
+    this._resetCropCorners();
+    if (this._state.isAutoCorrect) this._initCorrectCorners();
+    this._renderPreview();
+  }
+
+  _renderPreview() {
+    const s = this._state;
+    if (!s.originalImage) return;
+    const canvas = this._el.previewCanvas;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const img = new Image();
+    img.onload = () => {
+      let src = img;
+      if (s.isAutoCorrect && s.correctCorners.length === 4) {
+        const sw = img.width, sh = img.height;
+        const corners = s.correctCorners;
+        const srcPts = corners.map(p => ({ x: p.x * sw, y: p.y * sh }));
+        const dstPts = [{x:0,y:0},{x:sw,y:0},{x:sw,y:sh},{x:0,y:sh}];
+        const H = this._computeHomography(srcPts, dstPts);
+        const wc = document.createElement('canvas');
+        this._warpImage(img, wc, H, sw, sh);
+        src = wc;
+      }
+      canvas.width = src.width; canvas.height = src.height;
+      ctx.drawImage(src, 0, 0);
+      if (s.currentFilter !== 'original' && s.currentFilter !== 'photo') {
+        const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        this._processFilterData(id.data, canvas.width, canvas.height, s.currentFilter);
+        ctx.putImageData(id, 0, 0);
+      }
+      s.currentImage = canvas.toDataURL('image/jpeg', 0.95);
+    };
+    img.src = s.originalImage;
+  }
+
+  _closePreview(clearQueue) {
+    this._el.previewContainer.classList.remove('active');
+    this._state.isCropping = false;
+    this._state.correctMode = false;
+    this._el.cropFrame.classList.remove('active');
+    this._removeCorrectHandles();
+    this._state.currentImage = null;
+    this._state.originalImage = null;
+    this._state.currentFilter = 'original';
+    this._state.undoStack = [];
+    this._el.undoBtn.textContent = '↩';
+    if (clearQueue && this._state.pendingUploads.length) {
+      this._state.pendingUploads = [];
+      this._state.currentUploadIndex = 0;
+    }
+  }
+
+  _confirmAdd() {
+    if (!this._state.currentImage) { this._showToast('没有可保存的图片'); return; }
+    const canvas = this._el.previewCanvas;
+    const finalImage = canvas.toDataURL('image/jpeg', 0.95);
+    const now = Date.now();
+    const name = `camera_${now}.jpg`;
+    const imgObj = {
+      id: now, data: finalImage, filter: this._state.currentFilter,
+      timestamp: new Date().toLocaleString(), fileName: name, displayName: name, ocrText: ''
+    };
+    this._state.capturedImages.push(imgObj);
+    this._saveToDB(imgObj);
+    this._updateGalleryCount();
+    this._closePreview();
+    this._showToast(`已添加，共 ${this._state.capturedImages.length} 张`);
+  }
+
+  /* ====================== Undo ====================== */
+  _pushUndoState() {
+    if (this._state.currentImage) {
+      this._state.undoStack.push(this._state.currentImage);
+      if (this._state.undoStack.length > this._state.undoMax) this._state.undoStack.shift();
+      this._el.undoBtn.textContent = `↩ ${this._state.undoStack.length}`;
+    }
+  }
+
+  _undo() {
+    if (!this._state.undoStack.length) { this._showToast('没有可撤销的操作'); return; }
+    this._state.currentImage = this._state.undoStack.pop();
+    this._el.undoBtn.textContent = this._state.undoStack.length ? `↩ ${this._state.undoStack.length}` : '↩';
+    const canvas = this._el.previewCanvas;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const img = new Image();
+    img.onload = () => {
+      canvas.width = img.width; canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      if (this._state.isAutoCorrect) this._initCorrectCorners();
+      this._resetCropCorners();
+    };
+    img.src = this._state.currentImage;
+    this._showToast('已撤销');
+  }
+
+  /* ====================== File Upload ====================== */
+  _handleFileUpload(e) {
+    const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+    if (!files.length) return;
+    this._state.pendingUploads = files;
+    this._batchProcessUploads();
+    e.target.value = '';
+  }
+
+  async _batchProcessUploads() {
+    const files = this._state.pendingUploads;
+    const CONCURRENCY = 3;
+    this._showProcessing('准备处理...');
+    let done = 0, failed = 0;
+    const processOne = async (file) => {
+      try {
+        const dataUrl = await this._readFile(file);
+        let filtered = dataUrl;
+        if (['whiteboard','document'].includes(this._state.currentMode)) {
+          filtered = await this._applyFilterOffline(dataUrl, this._state.currentMode);
         }
-        sharpenImage(data, w, h, 0.3);
-    }
-    
-    function applyDocumentFilter(data, w, h) {
-        const contrast = 1.4, intercept = 128 * (1 - contrast);
-        for (let i = 0; i < data.length; i += 4) {
-            data[i] = Math.max(0, Math.min(255, data[i] * contrast + intercept));
-            data[i+1] = Math.max(0, Math.min(255, data[i+1] * contrast + intercept));
-            data[i+2] = Math.max(0, Math.min(255, data[i+2] * contrast + intercept));
-        }
-        sharpenImage(data, w, h, 0.5);
-    }
-    
-    function applyGrayscale(data) {
-        for (let i = 0; i < data.length; i += 4) {
-            const g = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
-            data[i] = data[i+1] = data[i+2] = g;
-        }
-    }
-    
-    function applyBlackWhite(data) {
-        for (let i = 0; i < data.length; i += 4) {
-            const g = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
-            const v = g > 128 ? 255 : 0;
-            data[i] = data[i+1] = data[i+2] = v;
-        }
-    }
-    
-    function sharpenImage(data, w, h, s) {
-        const copy = new Uint8ClampedArray(data);
-        for (let y = 1; y < h-1; y++) {
-            for (let x = 1; x < w-1; x++) {
-                const idx = (y * w + x) * 4;
-                for (let c = 0; c < 3; c++) {
-                    const val = -copy[idx - w*4 + c] - copy[idx - 4 + c] - copy[idx + 4 + c] - copy[idx + w*4 + c] + 5 * copy[idx + c];
-                    data[idx + c] = copy[idx + c] + (val - copy[idx + c]) * s;
-                }
-            }
-        }
-    }
-    
-    function applyMagicColor(data) {
-        for (let i = 0; i < data.length; i += 4) {
-            const max = Math.max(data[i], data[i+1], data[i+2]);
-            if (max > 0) {
-                const s = 1.5;
-                data[i] = Math.min(255, data[i] + (data[i] - max) * (s - 1));
-                data[i+1] = Math.min(255, data[i+1] + (data[i+1] - max) * (s - 1));
-                data[i+2] = Math.min(255, data[i+2] + (data[i+2] - max) * (s - 1));
-            }
-        }
-    }
-    
-    async function applyFilterToImage(imageData, filterType) {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.drawImage(img, 0, 0);
-                if (filterType === 'original' || filterType === 'photo') {
-                    resolve(canvas.toDataURL('image/jpeg', 0.95));
-                    return;
-                }
-                const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageDataObj.data;
-                switch(filterType) {
-                    case 'whiteboard': applyWhiteboardFilter(data, canvas.width, canvas.height); break;
-                    case 'document': applyDocumentFilter(data, canvas.width, canvas.height); break;
-                    case 'gray': applyGrayscale(data); break;
-                    case 'bw': applyBlackWhite(data); break;
-                    case 'magic': applyMagicColor(data); break;
-                }
-                ctx.putImageData(imageDataObj, 0, 0);
-                resolve(canvas.toDataURL('image/jpeg', 0.95));
-            };
-            img.src = imageData;
-        });
-    }
-    
-    // ======================== 上传图片（保留原始文件名） ========================
-    function handleFileUpload(event) {
-        const files = Array.from(event.target.files);
-        const imageFiles = files.filter(f => f.type.startsWith('image/'));
-        if (!imageFiles.length) return;
-        pendingUploads = imageFiles;
-        batchProcessUploads();
-        event.target.value = '';
-    }
-    
-    async function batchProcessUploads() {
-        const processing = document.getElementById('processing');
-        const processingText = document.getElementById('processingText');
-        processing.classList.add('active');
-        for (let i=0; i<pendingUploads.length; i++) {
-            const file = pendingUploads[i];
-            processingText.textContent = `处理 ${i+1}/${pendingUploads.length}`;
-            try {
-                const dataUrl = await readImageFile(file);
-                let filtered = dataUrl;
-                if (currentMode === 'whiteboard' || currentMode === 'document') {
-                    filtered = await applyFilterToImage(dataUrl, currentMode);
-                }
-                const displayName = file.name;
-                capturedImages.push({
-                    id: Date.now()+i,
-                    data: filtered,
-                    filter: currentMode,
-                    timestamp: new Date().toLocaleString(),
-                    fileName: file.name,
-                    displayName: displayName
-                });
-                if (i%5===0) await new Promise(r=>setTimeout(r,0));
-            } catch(e) { console.error(e); }
-        }
-        processing.classList.remove('active');
-        updateGalleryCount();
-        pendingUploads = [];
-        showToast(`添加 ${capturedImages.length} 张图片`);
-    }
-    
-    function readImageFile(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = e => resolve(e.target.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    }
-    
-    // ======================== 相机拍照 ========================
-    function capture() {
-        if (!isCameraReady) { document.getElementById('fileInput').click(); return; }
-        const flash = document.getElementById('flash');
-        flash.classList.add('active'); setTimeout(()=>flash.classList.remove('active'),100);
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('processCanvas');
-        const ctx = canvas.getContext('2d');
-        const crop = { left:0.1, top:0.2, right:0.9, bottom:0.8 };
-        const vw=video.videoWidth||1920, vh=video.videoHeight||1080;
-        const sw=vw*(crop.right-crop.left), sh=vh*(crop.bottom-crop.top);
-        canvas.width=sw; canvas.height=sh;
-        ctx.drawImage(video, vw*crop.left, vh*crop.top, sw, sh, 0,0,sw,sh);
-        currentImage = canvas.toDataURL('image/jpeg',1.0);
-        currentFilter = (currentMode==='whiteboard'?'whiteboard':(currentMode==='document'?'document':'original'));
-        showPreview();
-        if(currentMode==='ocr') setTimeout(()=>recognizeText(),500);
-    }
-    
-    function showPreview() {
-        const container = document.getElementById('previewContainer');
-        const canvas = document.getElementById('previewCanvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-        img.onload = () => {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx.drawImage(img, 0, 0);
-            resetCropCorners();
-            if (currentFilter !== 'original') applyFilter(currentFilter, document.querySelector(`.filter-btn[onclick*="${currentFilter}"]`));
+        const imgObj = {
+          id: Date.now() + done, data: filtered, filter: this._state.currentMode,
+          timestamp: new Date().toLocaleString(), fileName: file.name, displayName: file.name, ocrText: ''
         };
-        img.src = currentImage;
-        container.classList.add('active');
+        this._state.capturedImages.push(imgObj);
+        this._saveToDB(imgObj);
+        done++;
+      } catch(e) { console.error(e); failed++; }
+    };
+    for (let i = 0; i < files.length; i += CONCURRENCY) {
+      const batch = files.slice(i, i + CONCURRENCY);
+      this._showProcessing(`处理 ${Math.min(i+CONCURRENCY, files.length)}/${files.length}`);
+      await Promise.all(batch.map(processOne));
+      await new Promise(r => setTimeout(r, 0));
     }
-    
-    function closePreview(clearUploadQueue = false) {
-        document.getElementById('previewContainer').classList.remove('active');
-        isCropping = false;
-        document.getElementById('cropFrame').classList.remove('active');
-        currentImage = null;
-        currentFilter = 'original';
-        if (clearUploadQueue && pendingUploads.length) {
-            pendingUploads = [];
-            currentUploadIndex = 0;
-        }
-    }
-    
-    function applyFilter(filter, element) {
-        if (!currentImage) return;
-        currentFilter = filter;
-        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-        if (element) element.classList.add('active');
-        const canvas = document.getElementById('previewCanvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-        img.onload = () => {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx.drawImage(img, 0, 0);
-            if (filter === 'original') return;
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-            switch(filter) {
-                case 'whiteboard': applyWhiteboardFilter(data, canvas.width, canvas.height); break;
-                case 'document': applyDocumentFilter(data, canvas.width, canvas.height); break;
-                case 'gray': applyGrayscale(data); break;
-                case 'bw': applyBlackWhite(data); break;
-                case 'magic': applyMagicColor(data); break;
-            }
-            ctx.putImageData(imageData, 0, 0);
-        };
-        img.src = currentImage;
-    }
-    
-    function confirmAndAdd() {
-        if (!currentImage) { showToast('没有可保存的图片'); return; }
-        const canvas = document.getElementById('previewCanvas');
-        const finalImage = canvas.toDataURL('image/jpeg', 0.95);
-        const now = Date.now();
-        const displayName = `camera_${now}.jpg`;
-        capturedImages.push({
-            id: now,
-            data: finalImage,
-            filter: currentFilter,
-            timestamp: new Date().toLocaleString(),
-            fileName: displayName,
-            displayName: displayName
-        });
-        updateGalleryCount();
-        closePreview();
-        showToast(`已添加，共 ${capturedImages.length} 张`);
-    }
-    
-    // ======================== 旋转、裁剪等交互 ========================
-    function rotateImage() {
-        const canvas = document.getElementById('previewCanvas');
-        const temp = document.getElementById('tempCanvas');
-        const tempCtx = temp.getContext('2d');
-        temp.width = canvas.height;
-        temp.height = canvas.width;
-        tempCtx.translate(temp.width/2, temp.height/2);
-        tempCtx.rotate(Math.PI/2);
-        tempCtx.drawImage(canvas, -canvas.width/2, -canvas.height/2);
-        canvas.width = temp.width;
-        canvas.height = temp.height;
-        canvas.getContext('2d').drawImage(temp, 0, 0);
-        currentImage = canvas.toDataURL('image/jpeg', 1.0);
-        resetCropCorners();
-        showToast('已旋转90°');
-    }
-    
-    function toggleCrop() {
-        isCropping = !isCropping;
-        const frame = document.getElementById('cropFrame');
-        if (isCropping) {
-            frame.classList.add('active');
-            updateCropFrame();
-            initCropDrag();
-            showToast('拖动角落调整裁剪区域');
-        } else {
-            frame.classList.remove('active');
-            applyCrop();
-        }
-    }
-    
-    function resetCropCorners() {
-        cropCorners = { tl: {x:0,y:0}, tr: {x:1,y:0}, bl: {x:0,y:1}, br: {x:1,y:1} };
-        if (isCropping) updateCropFrame();
-    }
-    
-    function updateCropFrame() {
-        const canvas = document.getElementById('previewCanvas');
-        const container = document.getElementById('previewCanvasContainer');
-        const frame = document.getElementById('cropFrame');
-        const rect = canvas.getBoundingClientRect();
-        const cRect = container.getBoundingClientRect();
-        const left = rect.left - cRect.left + cropCorners.tl.x * rect.width;
-        const top = rect.top - cRect.top + cropCorners.tl.y * rect.height;
-        const width = (cropCorners.tr.x - cropCorners.tl.x) * rect.width;
-        const height = (cropCorners.bl.y - cropCorners.tl.y) * rect.height;
-        frame.style.left = left + 'px';
-        frame.style.top = top + 'px';
-        frame.style.width = width + 'px';
-        frame.style.height = height + 'px';
-    }
-    
-    function initCropDrag() {
-        const handles = document.querySelectorAll('.crop-handle');
-        handles.forEach(h => {
-            h.addEventListener('touchstart', dragStart, {passive: false});
-            h.addEventListener('mousedown', dragStart);
-        });
-        function dragStart(e) {
-            e.preventDefault(); e.stopPropagation();
-            activeHandle = e.target.dataset.corner;
-            document.addEventListener('touchmove', drag);
-            document.addEventListener('touchend', dragEnd);
-            document.addEventListener('mousemove', drag);
-            document.addEventListener('mouseup', dragEnd);
-        }
-        function drag(e) {
-            if (!activeHandle) return;
-            e.preventDefault();
-            const canvas = document.getElementById('previewCanvas');
-            const rect = canvas.getBoundingClientRect();
-            const cx = e.touches ? e.touches[0].clientX : e.clientX;
-            const cy = e.touches ? e.touches[0].clientY : e.clientY;
-            let x = Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
-            let y = Math.max(0, Math.min(1, (cy - rect.top) / rect.height));
-            switch(activeHandle) {
-                case 'tl': cropCorners.tl.x = Math.min(x, cropCorners.tr.x - 0.05); cropCorners.tl.y = Math.min(y, cropCorners.bl.y - 0.05); break;
-                case 'tr': cropCorners.tr.x = Math.max(x, cropCorners.tl.x + 0.05); cropCorners.tr.y = Math.min(y, cropCorners.br.y - 0.05); break;
-                case 'bl': cropCorners.bl.x = Math.min(x, cropCorners.br.x - 0.05); cropCorners.bl.y = Math.max(y, cropCorners.tl.y + 0.05); break;
-                case 'br': cropCorners.br.x = Math.max(x, cropCorners.bl.x + 0.05); cropCorners.br.y = Math.max(y, cropCorners.tr.y + 0.05); break;
-            }
-            updateCropFrame();
-        }
-        function dragEnd() {
-            activeHandle = null;
-            document.removeEventListener('touchmove', drag);
-            document.removeEventListener('touchend', dragEnd);
-            document.removeEventListener('mousemove', drag);
-            document.removeEventListener('mouseup', dragEnd);
-        }
-    }
-    
-    function applyCrop() {
-        const canvas = document.getElementById('previewCanvas');
-        const temp = document.getElementById('tempCanvas');
-        const tempCtx = temp.getContext('2d');
-        const w = canvas.width, h = canvas.height;
-        const x1 = Math.floor(cropCorners.tl.x * w), y1 = Math.floor(cropCorners.tl.y * h);
-        const x2 = Math.floor(cropCorners.br.x * w), y2 = Math.floor(cropCorners.br.y * h);
-        const cw = Math.max(1, x2 - x1), ch = Math.max(1, y2 - y1);
-        temp.width = cw; temp.height = ch;
-        tempCtx.drawImage(canvas, x1, y1, cw, ch, 0, 0, cw, ch);
-        canvas.width = cw; canvas.height = ch;
-        canvas.getContext('2d').drawImage(temp, 0, 0);
-        currentImage = canvas.toDataURL('image/jpeg', 1.0);
-        showToast('已裁剪');
-    }
-    
-    // ======================== 相机控制 ========================
-    async function toggleFlash() {
-        if (!videoTrack) { showToast('相机未就绪'); return; }
-        try {
-            const cap = videoTrack.getCapabilities();
-            if (cap.torch) {
-                const settings = videoTrack.getSettings();
-                await videoTrack.applyConstraints({ advanced: [{ torch: !settings.torch }] });
-                showToast(settings.torch ? '闪光灯已关闭' : '闪光灯已开启');
-            } else { showToast('设备不支持闪光灯'); }
-        } catch(e) { showToast('闪光灯控制失败'); }
-    }
-    
-    async function switchCamera() {
-        if (!stream) { showToast('相机未启动'); return; }
-        const currentFacing = stream.getVideoTracks()[0].getSettings().facingMode;
-        const newFacing = currentFacing === 'environment' ? 'user' : 'environment';
-        stream.getTracks().forEach(t => t.stop());
-        try {
-            const newStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: newFacing }, audio: false });
-            stream = newStream;
-            videoTrack = newStream.getVideoTracks()[0];
-            document.getElementById('video').srcObject = newStream;
-            showToast(newFacing === 'environment' ? '后置相机' : '前置相机');
-        } catch(err) { showToast('切换失败，正在重试...'); initCamera(); }
-    }
-    
-    function setZoom(level) {
-        currentZoom = level;
-        document.querySelectorAll('.zoom-btn').forEach(btn => btn.classList.remove('active'));
-        document.getElementById(`zoom${level}`).classList.add('active');
-        if (videoTrack && videoTrack.getCapabilities().zoom) {
-            videoTrack.applyConstraints({ advanced: [{ zoom: level }] }).then(() => showToast(`${level}x 变焦`)).catch(() => showToast('不支持变焦'));
-        } else {
-            document.getElementById('video').style.transform = `scaleX(1) scale(${level})`;
-            showToast(`${level}x 数码变焦`);
-        }
-    }
-    
-    function setMode(mode, el) {
-        currentMode = mode;
-        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-        el.classList.add('active');
-        const overlay = document.getElementById('scanOverlay');
-        if (['whiteboard','document','ocr'].includes(mode)) overlay.classList.add('active');
-        else overlay.classList.remove('active');
-        const modes = { whiteboard:'白板模式', document:'文档模式', photo:'照片模式', business:'名片模式', ocr:'OCR模式' };
-        showToast(modes[mode]);
-    }
-    
-    // ======================== 相册与可编辑文件名 ========================
-    function updateGalleryCount() {
-        const countSpan = document.getElementById('galleryCount');
-        const total = capturedImages.length;
-        if(total>0){ countSpan.textContent = total>99?'99+':total; countSpan.style.display='flex'; }
-        else countSpan.style.display='none';
-    }
-    
-    function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
-    
-    function openGallery() {
-        const modal = document.getElementById('galleryModal');
-        const grid = document.getElementById('galleryGrid');
-        const totalSpan = document.getElementById('galleryTotal');
-        grid.innerHTML = '';
-        totalSpan.textContent = capturedImages.length;
-        capturedImages.forEach((img, idx) => {
-            const item = document.createElement('div');
-            item.className = 'gallery-item';
-            const displayName = img.displayName || img.fileName;
-            item.innerHTML = `
-                <img src="${img.data}" style="width:100%; flex:1; object-fit:cover;">
-                <div class="filename-edit" contenteditable="true" data-index="${idx}">${escapeHtml(displayName)}</div>
-            `;
-            const editDiv = item.querySelector('.filename-edit');
-            editDiv.addEventListener('blur', (e) => {
-                const newName = e.target.innerText.trim();
-                if (newName && newName !== (capturedImages[idx].displayName || capturedImages[idx].fileName)) {
-                    capturedImages[idx].displayName = newName;
-                    showToast(`已重命名为: ${newName}`);
-                } else if (!newName) {
-                    e.target.innerText = capturedImages[idx].displayName || capturedImages[idx].fileName;
-                }
-            });
-            editDiv.addEventListener('click', (e) => e.stopPropagation());
-            item.onclick = (e) => {
-                if(e.target === editDiv) return;
-                if(item.classList.contains('selected')){
-                    item.classList.remove('selected');
-                    selectedOrder = selectedOrder.filter(i=>i!==idx);
-                } else {
-                    item.classList.add('selected');
-                    selectedOrder.push(idx);
-                }
-                updateSelectAllButton();
-                updateExportCount();
-            };
-            if(selectedOrder.includes(idx)) item.classList.add('selected');
-            grid.appendChild(item);
-        });
-        updateSelectAllButton();
-        updateExportCount();
-        modal.classList.add('active');
-    }
-    
-    function updateExportCount() { document.getElementById('exportCount').textContent = selectedOrder.length>0 ? selectedOrder.length : capturedImages.length; }
-    function updateSelectAllButton() { const btn=document.getElementById('selectAllBtn'); const total=capturedImages.length; if(selectedOrder.length===total && total>0){ isAllSelected=true; btn.textContent='取消全选'; }else{ isAllSelected=false; btn.textContent='全选'; } }
-    function toggleSelectAll() { const items=document.querySelectorAll('.gallery-item'); if(isAllSelected){ items.forEach(i=>i.classList.remove('selected')); selectedOrder=[]; }else{ selectedOrder=[]; items.forEach((item,idx)=>{ item.classList.add('selected'); selectedOrder.push(idx); }); } updateSelectAllButton(); updateExportCount(); }
-    function closeGallery() { document.getElementById('galleryModal').classList.remove('active'); }
-    function deleteSelected() { if(selectedOrder.length===0){ showToast('请先选择'); return; } if(!confirm(`删除${selectedOrder.length}个？`)) return; const sorted=[...selectedOrder].sort((a,b)=>b-a); for(let idx of sorted) capturedImages.splice(idx,1); selectedOrder=[]; openGallery(); updateGalleryCount(); showToast(`已删除${sorted.length}个`); }
-    
-    function sortGalleryByDisplayName() {
-        if(capturedImages.length===0){ showToast('没有图片'); return; }
-        capturedImages.sort((a,b)=>{
-            const nameA = (a.displayName || a.fileName).toLowerCase();
-            const nameB = (b.displayName || b.fileName).toLowerCase();
-            return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
-        });
-        selectedOrder = [];
-        openGallery();
-        showToast('已按编辑后的文件名排序');
-    }
-    
-    // ======================== 导出 PDF ========================
-    async function exportPDF() {
-        if(capturedImages.length===0){ showToast('没有图片'); return; }
-        let imagesToExport = [...capturedImages];
-        imagesToExport.sort((a,b)=>{
-            const nameA = (a.displayName || a.fileName).toLowerCase();
-            const nameB = (b.displayName || b.fileName).toLowerCase();
-            return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
-        });
-        const fileList = imagesToExport.map((img,i)=> `${i+1}. ${img.displayName || img.fileName}`).join('\n');
-        if(!confirm(`即将按以下顺序导出 PDF，请确认顺序是否正确：\n\n${fileList}\n\n是否继续？`)) return;
-        
-        const processing = document.getElementById('processing');
-        const processingText = document.getElementById('processingText');
-        processing.classList.add('active');
-        try {
-            const { PDFDocument } = PDFLib;
-            const pdfDoc = await PDFDocument.create();
-            const { width: a4W, height: a4H } = getA4CanvasSize(currentDPI);
-            for(let i=0; i<imagesToExport.length; i++){
-                processingText.textContent = `处理 ${i+1}/${imagesToExport.length}`;
-                const img = await loadImage(imagesToExport[i].data);
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = a4W; canvas.height = a4H;
-                ctx.fillStyle = 'white'; ctx.fillRect(0,0,a4W,a4H);
-                const ratio = img.width/img.height;
-                const a4Ratio = a4W/a4H;
-                let dw, dh, ox, oy;
-                if(ratio > a4Ratio){ dw=a4W; dh=a4W/ratio; ox=0; oy=(a4H-dh)/2; }
-                else { dh=a4H; dw=a4H*ratio; ox=(a4W-dw)/2; oy=0; }
-                ctx.drawImage(img, ox, oy, dw, dh);
-                const jpeg = canvas.toDataURL('image/jpeg', 0.85);
-                const embed = await pdfDoc.embedJpg(jpeg.split(',')[1]);
-                const page = pdfDoc.addPage([595.28,841.89]);
-                page.drawImage(embed, { x:0, y:0, width:595.28, height:841.89 });
-                if(i%3===0) await new Promise(r=>setTimeout(r,10));
-            }
-            const pdfBytes = await pdfDoc.save();
-            const blob = new Blob([pdfBytes], {type:'application/pdf'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `扫描文档_${new Date().toLocaleDateString()}.pdf`;
-            a.click();
-            URL.revokeObjectURL(url);
-            showToast('导出成功，已按编辑名排序');
-        } catch(e) { console.error(e); showToast('导出失败'); }
-        finally { processing.classList.remove('active'); }
-    }
-    
-    function loadImage(src) { return new Promise((resolve,reject)=>{ const img=new Image(); img.onload=()=>resolve(img); img.onerror=reject; img.src=src; }); }
-    
-    // ======================== OCR 完整功能 ========================
-    function setOCRLang(lang) { ocrLang=lang; document.querySelectorAll('.lang-btn').forEach(b=>b.classList.remove('active')); event.target.classList.add('active'); showToast(`OCR语言:${getLangName(lang)}`); }
-    function setOCRMode(mode) { ocrMode=mode; document.querySelectorAll('.ocr-mode-btn').forEach(b=>b.classList.remove('active')); event.target.classList.add('active'); showToast(`OCR模式:${getModeName(mode)}`); }
-    function getLangName(l) { const n={'chi_sim+eng':'中+英','chi_sim':'中文','eng':'英文','jpn':'日语','kor':'韩语'}; return n[l]||l; }
-    function getModeName(m) { const n={'standard':'标准','fast':'快速','accurate':'精确'}; return n[m]||m; }
-    
-    async function recognizeText() {
-        if (!currentImage) { showToast('请先选择或拍摄图片'); return; }
-        if (isOCRProcessing) { showToast('正在识别中，请稍候...'); return; }
-        try {
-            isOCRProcessing=true;
-            const start=Date.now();
-            const processing=document.getElementById('processing');
-            const processingText=document.getElementById('processingText');
-            processing.classList.add('active');
-            processingText.textContent='初始化OCR引擎...';
-            if(typeof Tesseract==='undefined') throw new Error('OCR引擎未加载');
-            const canvas=document.getElementById('previewCanvas');
-            let config={ lang:ocrLang, logger:m=>{ if(m.status==='recognizing text') processingText.textContent=`识别中 ${Math.round(m.progress*100)}%`; } };
-            if(ocrMode==='fast') config.tessedit_pageseg_mode=Tesseract.PSM.SINGLE_BLOCK;
-            else if(ocrMode==='accurate') config.tessedit_pageseg_mode=Tesseract.PSM.AUTO;
-            else config.tessedit_pageseg_mode=Tesseract.PSM.AUTO_OSD;
-            const result=await Tesseract.recognize(canvas,ocrLang,config);
-            const time=(Date.now()-start)/1000;
-            updateOCRResult(result.data.text,time);
-            processing.classList.remove('active');
-            showToast(`识别完成 ${time.toFixed(2)}秒`);
-            openOCR();
-        } catch(e){ console.error(e); showToast('OCR失败'); document.getElementById('processing').classList.remove('active'); }
-        finally{ isOCRProcessing=false; }
-    }
-    
-    function updateOCRResult(text,time) { document.getElementById('ocrText').value=text; document.getElementById('ocrCharCount').textContent=`字符:${text.length}`; document.getElementById('ocrTime').textContent=`用时:${time.toFixed(2)}s`; }
-    function openOCR() { document.getElementById('ocrModal').classList.add('active'); }
-    function closeOCR() { document.getElementById('ocrModal').classList.remove('active'); }
-    function copyOCRText() { const ta=document.getElementById('ocrText'); ta.select(); document.execCommand('copy'); showToast('已复制'); }
-    function saveOCRText() { const text=document.getElementById('ocrText').value; if(!text.trim()) return; const blob=new Blob([text],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`OCR_${Date.now()}.txt`; a.click(); URL.revokeObjectURL(a.href); }
-    
-    async function exportOCRToPDF() {
-        const text=document.getElementById('ocrText').value;
-        if(!text.trim()){ showToast('没有文本'); return; }
-        try {
-            const processing=document.getElementById('processing');
-            const processingText=document.getElementById('processingText');
-            processing.classList.add('active');
-            processingText.textContent='生成PDF...';
-            const { PDFDocument, StandardFonts, rgb } = PDFLib;
-            const pdfDoc=await PDFDocument.create();
-            const page=pdfDoc.addPage([595.28,841.89]);
-            const { width, height }=page.getSize();
-            const font=await pdfDoc.embedFont(StandardFonts.Helvetica);
-            const fontSize=12, lineHeight=fontSize*1.2, margin=50;
-            const maxWidth=width-2*margin;
-            const lines=splitTextIntoLines(text,font,fontSize,maxWidth);
-            let y=height-margin;
-            page.drawText('OCR识别结果',{ x:margin, y:y, size:16, font, color:rgb(0,0,0) });
-            y-=30;
-            page.drawText(`识别时间: ${new Date().toLocaleString()} | 语言: ${getLangName(ocrLang)} | 模式: ${getModeName(ocrMode)}`,{ x:margin, y:y, size:8, font, color:rgb(0.5,0.5,0.5) });
-            y-=20;
-            page.drawLine({ start:{ x:margin, y:y }, end:{ x:width-margin, y:y }, thickness:1, color:rgb(0.8,0.8,0.8) });
-            y-=20;
-            for(const line of lines){
-                if(y<margin){ const newPage=pdfDoc.addPage([595.28,841.89]); y=height-margin; }
-                page.drawText(line,{ x:margin, y:y, size:fontSize, font, color:rgb(0,0,0) });
-                y-=lineHeight;
-            }
-            const pdfBytes=await pdfDoc.save();
-            const blob=new Blob([pdfBytes],{type:'application/pdf'});
-            const url=URL.createObjectURL(blob);
-            const a=document.createElement('a');
-            a.href=url; a.download=`OCR结果_${Date.now()}.pdf`; a.click();
-            URL.revokeObjectURL(url);
-            processing.classList.remove('active');
-            showToast('导出成功');
-        } catch(e){ console.error(e); showToast('导出失败'); document.getElementById('processing').classList.remove('active'); }
-    }
-    
-    function splitTextIntoLines(text,font,fontSize,maxWidth){
-        const lines=[];
-        const paragraphs=text.split('\n');
-        for(const para of paragraphs){
-            const words=para.split(' ');
-            let cur='';
-            for(const w of words){
-                const test=cur?`${cur} ${w}`:w;
-                const wd=font.widthOfTextAtSize(test,fontSize);
-                if(wd<=maxWidth) cur=test;
-                else{ if(cur) lines.push(cur); cur=w; }
-            }
-            if(cur) lines.push(cur);
-            lines.push('');
-        }
-        return lines;
-    }
-    
-    // ======================== 事件绑定 ========================
-    let resizeTimeout;
-    window.addEventListener('resize',()=>{ clearTimeout(resizeTimeout); resizeTimeout=setTimeout(()=>{ if(isCropping) updateCropFrame(); },100); });
-    document.addEventListener('DOMContentLoaded',()=>{ setTimeout(initCamera,100); initDPISelector(); document.addEventListener('touchmove',(e)=>{ if(e.target.closest('.gallery-grid')||e.target.closest('.filter-bar')||e.target.closest('.ocr-text-container')) return; e.preventDefault(); },{passive:false}); });
-    document.addEventListener('keydown',(e)=>{ if(e.code==='Space'&&isCameraReady){ e.preventDefault(); capture(); } if(e.code==='Enter'&&document.getElementById('previewContainer').classList.contains('active')){ e.preventDefault(); confirmAndAdd(); } });
-</script>
-<script>
-  if ('serviceWorker' in navigator) {
-    // 注意：如果站点在子目录（如 /project/），注册路径需要包含子目录前缀
-    // 一般使用相对路径 './sw.js' 或绝对路径 '/project/sw.js'
-    navigator.serviceWorker.register('./sw.js').then(reg => {
-      console.log('Service Worker 注册成功，作用域:', reg.scope);
-    }).catch(err => {
-      console.error('Service Worker 注册失败:', err);
+    this._hideProcessing();
+    this._updateGalleryCount();
+    this._state.pendingUploads = [];
+    const msg = `添加 ${done} 张图片` + (failed ? `，${failed} 张失败` : '');
+    this._showToast(msg);
+  }
+
+  _readFile(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = e => resolve(e.target.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
     });
   }
+
+  /* ====================== Filters ====================== */
+  _applyFilter(filter, el) {
+    const s = this._state;
+    if (!s.currentImage) return;
+    if (el) {
+      document.querySelectorAll('[data-cmd="applyFilter"]').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+    }
+    this._pushUndoState();
+    s.currentFilter = filter;
+    this._renderPreview();
+  }
+
+  async _applyFilterOffline(dataUrl, filter) {
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
+    const c = document.createElement('canvas');
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    c.width = img.width; c.height = img.height;
+    ctx.drawImage(img, 0, 0);
+    if (filter === 'original' || filter === 'photo') return c.toDataURL('image/jpeg', 0.95);
+    const id = ctx.getImageData(0, 0, c.width, c.height);
+    this._processFilterData(id.data, c.width, c.height, filter);
+    ctx.putImageData(id, 0, 0);
+    return c.toDataURL('image/jpeg', 0.95);
+  }
+
+  _processFilterData(data, w, h, filter) {
+    switch (filter) {
+      case 'whiteboard': this._applyWhiteboard(data, w, h); break;
+      case 'document': this._applyDocument(data, w, h); break;
+      case 'gray': this._applyGrayscale(data); break;
+      case 'bw': this._applyBlackWhite(data); break;
+      case 'auto': this._applyAutoEnhance(data); break;
+      case 'deep': this._applyDeepContrast(data, w, h); break;
+      case 'brighten': this._applyBrighten(data); break;
+      case 'invert': this._applyInvert(data); break;
+      case 'denoise': this._applyDenoise(data, w, h); break;
+      case 'magic': this._applyMagic(data); break;
+    }
+  }
+
+  /* -- filter algorithms -- */
+  _applyWhiteboard(data, w, h) {
+    let total = 0;
+    for (let i = 0; i < data.length; i += 4) total += (data[i] + data[i+1] + data[i+2]) / 3;
+    const avg = total / (data.length / 4);
+    const thresh = avg * 0.85;
+    for (let i = 0; i < data.length; i += 4) {
+      const b = (data[i] + data[i+1] + data[i+2]) / 3;
+      if (b > thresh) { data[i] = data[i+1] = data[i+2] = 255; }
+      else {
+        data[i] = Math.min(255, data[i] * 1.5);
+        data[i+1] = Math.min(255, data[i+1] * 1.5);
+        data[i+2] = Math.min(255, data[i+2] * 1.5);
+      }
+    }
+    this._sharpen(data, w, h, 0.3);
+  }
+
+  _applyDocument(data, w, h) {
+    const c = 1.4, intercept = 128 * (1 - c);
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.max(0, Math.min(255, data[i] * c + intercept));
+      data[i+1] = Math.max(0, Math.min(255, data[i+1] * c + intercept));
+      data[i+2] = Math.max(0, Math.min(255, data[i+2] * c + intercept));
+    }
+    this._sharpen(data, w, h, 0.5);
+  }
+
+  _applyGrayscale(data) {
+    for (let i = 0; i < data.length; i += 4) {
+      const g = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+      data[i] = data[i+1] = data[i+2] = g;
+    }
+  }
+
+  _applyBlackWhite(data) {
+    for (let i = 0; i < data.length; i += 4) {
+      const g = data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114;
+      const v = g > 128 ? 255 : 0;
+      data[i] = data[i+1] = data[i+2] = v;
+    }
+  }
+
+  _applyAutoEnhance(data) {
+    let mn = 255, mx = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const g = (data[i] + data[i+1] + data[i+2]) / 3;
+      if (g < mn) mn = g;
+      if (g > mx) mx = g;
+    }
+    const range = mx - mn || 1;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = ((data[i] - mn) / range * 255) | 0;
+      data[i+1] = ((data[i+1] - mn) / range * 255) | 0;
+      data[i+2] = ((data[i+2] - mn) / range * 255) | 0;
+    }
+  }
+
+  _applyDeepContrast(data, w, h) {
+    const c = 2.0, intercept = 128 * (1 - c);
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.max(0, Math.min(255, data[i] * c + intercept));
+      data[i+1] = Math.max(0, Math.min(255, data[i+1] * c + intercept));
+      data[i+2] = Math.max(0, Math.min(255, data[i+2] * c + intercept));
+    }
+    this._sharpen(data, w, h, 0.6);
+  }
+
+  _applyBrighten(data) {
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, data[i] + 30);
+      data[i+1] = Math.min(255, data[i+1] + 30);
+      data[i+2] = Math.min(255, data[i+2] + 30);
+    }
+    const gamma = 0.8;
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = Math.min(255, Math.pow(data[i] / 255, gamma) * 255);
+      data[i+1] = Math.min(255, Math.pow(data[i+1] / 255, gamma) * 255);
+      data[i+2] = Math.min(255, Math.pow(data[i+2] / 255, gamma) * 255);
+    }
+  }
+
+  _applyInvert(data) {
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 255 - data[i];
+      data[i+1] = 255 - data[i+1];
+      data[i+2] = 255 - data[i+2];
+    }
+  }
+
+  _applyDenoise(data, w, h) {
+    const copy = new Uint8ClampedArray(data);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        for (let c = 0; c < 3; c++) {
+          const n = [];
+          for (let dy = -1; dy <= 1; dy++)
+            for (let dx = -1; dx <= 1; dx++)
+              n.push(copy[((y + dy) * w + (x + dx)) * 4 + c]);
+          n.sort((a, b) => a - b);
+          data[(y * w + x) * 4 + c] = n[4];
+        }
+      }
+    }
+  }
+
+  _applyMagic(data) {
+    for (let i = 0; i < data.length; i += 4) {
+      const mx = Math.max(data[i], data[i+1], data[i+2]);
+      if (mx > 0) {
+        data[i] = Math.min(255, data[i] + (data[i] - mx) * 0.5);
+        data[i+1] = Math.min(255, data[i+1] + (data[i+1] - mx) * 0.5);
+        data[i+2] = Math.min(255, data[i+2] + (data[i+2] - mx) * 0.5);
+      }
+    }
+  }
+
+  _sharpen(data, w, h, s) {
+    const copy = new Uint8ClampedArray(data);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = (y * w + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const val = -copy[idx - w*4 + c] - copy[idx - 4 + c] - copy[idx + 4 + c] - copy[idx + w*4 + c] + 5 * copy[idx + c];
+          data[idx + c] = copy[idx + c] + (val - copy[idx + c]) * s;
+        }
+      }
+    }
+  }
+
+  /* ====================== Auto Correct (Perspective) ====================== */
+  _toggleAutoCorrect() {
+    const s = this._state;
+    s.isAutoCorrect = !s.isAutoCorrect;
+    this._el.correctToggle.textContent = s.isAutoCorrect ? '开' : '关';
+    this._el.correctToggle.classList.toggle('active');
+    if (s.isAutoCorrect && s.originalImage) this._initCorrectCorners();
+    else this._removeCorrectHandles();
+    this._pushUndoState();
+    this._renderPreview();
+  }
+
+  _initCorrectCorners() {
+    const canvas = this._el.previewCanvas;
+    const wrap = this._el.previewCanvasWrap;
+    this._removeCorrectHandles();
+    const s = this._state;
+    const margin = 0.08;
+    s.correctCorners = [
+      { x: margin, y: margin, label: 'TL' },
+      { x: 1 - margin, y: margin, label: 'TR' },
+      { x: 1 - margin, y: 1 - margin, label: 'BR' },
+      { x: margin, y: 1 - margin, label: 'BL' }
+    ];
+    s.correctMode = true;
+    this._renderCorrectHandles();
+  }
+
+  _removeCorrectHandles() {
+    document.querySelectorAll('.correct-handle').forEach(el => el.remove());
+  }
+
+  _renderCorrectHandles() {
+    this._removeCorrectHandles();
+    const wrap = this._el.previewCanvasWrap;
+    const canvas = this._el.previewCanvas;
+    const s = this._state;
+    if (!s.correctMode || !s.correctCorners.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const wRect = wrap.getBoundingClientRect();
+    s.correctCorners.forEach((pt, i) => {
+      const h = document.createElement('div');
+      h.className = 'correct-handle';
+      h.dataset.correctIdx = i;
+      h.dataset.label = pt.label;
+      h.style.left = (rect.left - wRect.left + pt.x * rect.width) + 'px';
+      h.style.top = (rect.top - wRect.top + pt.y * rect.height) + 'px';
+      h.addEventListener('mousedown', this._onCorrectDragStart.bind(this));
+      h.addEventListener('touchstart', this._onCorrectDragStart.bind(this), { passive: false });
+      wrap.appendChild(h);
+    });
+  }
+
+  _onCorrectDragStart(e) {
+    e.preventDefault();
+    const h = e.target.closest('.correct-handle');
+    if (!h) return;
+    this._state.activeCorrectHandle = parseInt(h.dataset.correctIdx);
+    const onMove = (ev) => this._onCorrectDrag(ev);
+    const onEnd = () => this._onCorrectDragEnd();
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onEnd, { once: true });
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd, { once: true });
+    this._correctDragCleanup = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('touchmove', onMove); };
+  }
+
+  _onCorrectDrag(e) {
+    if (this._state.activeCorrectHandle === null) return;
+    e.preventDefault();
+    const canvas = this._el.previewCanvas;
+    const wrap = this._el.previewCanvasWrap;
+    const rect = canvas.getBoundingClientRect();
+    const wRect = wrap.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = Math.max(0.02, Math.min(0.98, (cx - rect.left) / rect.width));
+    const y = Math.max(0.02, Math.min(0.98, (cy - rect.top) / rect.height));
+    const idx = this._state.activeCorrectHandle;
+    this._state.correctCorners[idx].x = x;
+    this._state.correctCorners[idx].y = y;
+    this._renderCorrectHandles();
+    this._applyCorrectionPreview();
+  }
+
+  _onCorrectDragEnd() {
+    if (this._correctDragCleanup) this._correctDragCleanup();
+    this._state.activeCorrectHandle = null;
+    if (this._state.isAutoCorrect) {
+      this._pushUndoState();
+      this._renderPreview();
+    }
+  }
+
+  _applyCorrectionPreview() {
+    const s = this._state;
+    if (!s.originalImage) return;
+    const canvas = this._el.previewCanvas;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const img = new Image();
+    img.onload = () => {
+      const sw = img.width, sh = img.height;
+      const corners = s.correctCorners;
+      const srcPts = corners.map(p => ({ x: p.x * sw, y: p.y * sh }));
+      const dstPts = [{x:0,y:0},{x:sw,y:0},{x:sw,y:sh},{x:0,y:sh}];
+      const H = this._computeHomography(srcPts, dstPts);
+      this._warpImage(img, canvas, H, sw, sh);
+      if (s.currentFilter !== 'original' && s.currentFilter !== 'photo') {
+        const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        this._processFilterData(id.data, canvas.width, canvas.height, s.currentFilter);
+        ctx.putImageData(id, 0, 0);
+      }
+    };
+    img.src = s.originalImage;
+  }
+
+  _computeHomography(src, dst) {
+    const A = [], B = [];
+    for (let i = 0; i < 4; i++) {
+      const sx = src[i].x, sy = src[i].y, dx = dst[i].x, dy = dst[i].y;
+      A.push([sx, sy, 1, 0, 0, 0, -sx*dx, -sy*dx]);
+      B.push(dx);
+      A.push([0, 0, 0, sx, sy, 1, -sx*dy, -sy*dy]);
+      B.push(dy);
+    }
+    const h = this._solveLinear8(A, B);
+    return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+  }
+
+  _solveLinear8(A, B) {
+    const n = 8;
+    for (let i = 0; i < n; i++) {
+      let maxRow = i;
+      for (let j = i + 1; j < n; j++) if (Math.abs(A[j][i]) > Math.abs(A[maxRow][i])) maxRow = j;
+      [A[i], A[maxRow]] = [A[maxRow], A[i]]; [B[i], B[maxRow]] = [B[maxRow], B[i]];
+      const piv = A[i][i];
+      if (Math.abs(piv) < 1e-12) continue;
+      for (let j = i; j < n; j++) A[i][j] /= piv;
+      B[i] /= piv;
+      for (let j = 0; j < n; j++) {
+        if (j === i) continue;
+        const f = A[j][i];
+        for (let k = i; k < n; k++) A[j][k] -= f * A[i][k];
+        B[j] -= f * B[i];
+      }
+    }
+    return B;
+  }
+
+  _warpImage(srcImg, dstCanvas, H, dstW, dstH) {
+    dstCanvas.width = dstW; dstCanvas.height = dstH;
+    const ctx = dstCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, dstW, dstH);
+    const srcC = document.createElement('canvas');
+    srcC.width = srcImg.width; srcC.height = srcImg.height;
+    const srcCtx = srcC.getContext('2d', { willReadFrequently: true });
+    srcCtx.drawImage(srcImg, 0, 0);
+    const srcData = srcCtx.getImageData(0, 0, srcImg.width, srcImg.height);
+    const sW = srcImg.width, sH = srcImg.height;
+    const dstData = ctx.createImageData(dstW, dstH);
+    const d = dstData.data;
+    const hInv = this._invHomography(H);
+    for (let y = 0; y < dstH; y++) {
+      for (let x = 0; x < dstW; x++) {
+        const denom = hInv[6]*x + hInv[7]*y + hInv[8];
+        const sx = (hInv[0]*x + hInv[1]*y + hInv[2]) / denom;
+        const sy = (hInv[3]*x + hInv[4]*y + hInv[5]) / denom;
+        if (sx < 0 || sx >= sW - 1 || sy < 0 || sy >= sH - 1) continue;
+        const ix = Math.floor(sx), iy = Math.floor(sy);
+        const fx = sx - ix, fy = sy - iy;
+        const idx = (y * dstW + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const p = (iy * sW + ix) * 4 + c;
+          const v00 = srcData.data[p], v10 = srcData.data[p + 4];
+          const v01 = srcData.data[p + sW*4], v11 = srcData.data[p + sW*4 + 4];
+          d[idx + c] = (v00*(1-fx)*(1-fy) + v10*fx*(1-fy) + v01*(1-fx)*fy + v11*fx*fy) | 0;
+        }
+        d[idx + 3] = 255;
+      }
+    }
+    ctx.putImageData(dstData, 0, 0);
+  }
+
+  _invHomography(H) {
+    const [a,b,c,d,e,f,g,h,ih] = H;
+    const det = a*(e*ih-f*h) - b*(d*ih-f*g) + c*(d*h-e*g);
+    if (Math.abs(det) < 1e-12) return [1,0,0,0,1,0,0,0,1];
+    const id = 1 / det;
+    return [
+      (e*ih-f*h)*id, (c*h-b*ih)*id, (b*f-c*e)*id,
+      (f*g-d*ih)*id, (a*ih-c*g)*id, (c*d-a*f)*id,
+      (d*h-e*g)*id, (b*g-a*h)*id, (a*e-b*d)*id
+    ];
+  }
+
+  /* ====================== Rotate & Crop ====================== */
+  _rotateImage() {
+    if (!this._state.originalImage) return;
+    this._pushUndoState();
+    const img = new Image();
+    img.onload = () => {
+      const temp = this._el.tempCanvas;
+      const tCtx = temp.getContext('2d', { willReadFrequently: true });
+      temp.width = img.height; temp.height = img.width;
+      tCtx.translate(temp.width/2, temp.height/2);
+      tCtx.rotate(Math.PI/2);
+      tCtx.drawImage(img, -img.width/2, -img.height/2);
+      const c = document.createElement('canvas');
+      c.width = temp.width; c.height = temp.height;
+      c.getContext('2d').drawImage(temp, 0, 0);
+      this._state.originalImage = c.toDataURL('image/jpeg', 1.0);
+      this._resetCropCorners();
+      if (this._state.isAutoCorrect) this._initCorrectCorners();
+      this._renderPreview();
+      this._showToast('已旋转90°');
+    };
+    img.src = this._state.originalImage;
+  }
+
+  _toggleCrop() {
+    const s = this._state;
+    s.isCropping = !s.isCropping;
+    const frame = this._el.cropFrame;
+    if (s.isCropping) {
+      frame.classList.add('active');
+      this._updateCropFrame();
+      this._initCropDrag();
+      this._showToast('拖动角落调整裁剪区域');
+    } else {
+      frame.classList.remove('active');
+      this._applyCrop();
+    }
+  }
+
+  _resetCropCorners() {
+    this._state.cropCorners = { tl: {x:0,y:0}, tr: {x:1,y:0}, bl: {x:0,y:1}, br: {x:1,y:1} };
+    if (this._state.isCropping) this._updateCropFrame();
+  }
+
+  _updateCropFrame() {
+    const canvas = this._el.previewCanvas;
+    const wrap = this._el.previewCanvasWrap;
+    const frame = this._el.cropFrame;
+    const rect = canvas.getBoundingClientRect();
+    const wRect = wrap.getBoundingClientRect();
+    const cc = this._state.cropCorners;
+    const left = rect.left - wRect.left + cc.tl.x * rect.width;
+    const top = rect.top - wRect.top + cc.tl.y * rect.height;
+    const w = (cc.tr.x - cc.tl.x) * rect.width;
+    const h = (cc.bl.y - cc.tl.y) * rect.height;
+    frame.style.left = left + 'px';
+    frame.style.top = top + 'px';
+    frame.style.width = w + 'px';
+    frame.style.height = h + 'px';
+  }
+
+  _initCropDrag() {
+    const handles = document.querySelectorAll('.crop-handle');
+    const onStart = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      this._state.activeHandle = e.target.dataset.corner;
+      const onMove = (ev) => this._onCropDrag(ev);
+      const onEnd = () => {
+        this._state.activeHandle = null;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('touchmove', onMove);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onEnd, { once: true });
+      document.addEventListener('touchmove', onMove, { passive: false });
+      document.addEventListener('touchend', onEnd, { once: true });
+    };
+    handles.forEach(h => { h.addEventListener('mousedown', onStart); h.addEventListener('touchstart', onStart, { passive: false }); });
+  }
+
+  _onCropDrag(e) {
+    if (!this._state.activeHandle) return;
+    e.preventDefault();
+    const canvas = this._el.previewCanvas;
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    let x = Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
+    let y = Math.max(0, Math.min(1, (cy - rect.top) / rect.height));
+    const cc = this._state.cropCorners;
+    switch (this._state.activeHandle) {
+      case 'tl': cc.tl.x = Math.min(x, cc.tr.x - 0.05); cc.tl.y = Math.min(y, cc.bl.y - 0.05); break;
+      case 'tr': cc.tr.x = Math.max(x, cc.tl.x + 0.05); cc.tr.y = Math.min(y, cc.br.y - 0.05); break;
+      case 'bl': cc.bl.x = Math.min(x, cc.br.x - 0.05); cc.bl.y = Math.max(y, cc.tl.y + 0.05); break;
+      case 'br': cc.br.x = Math.max(x, cc.bl.x + 0.05); cc.br.y = Math.max(y, cc.tr.y + 0.05); break;
+    }
+    this._updateCropFrame();
+  }
+
+  _applyCrop() {
+    if (!this._state.originalImage) return;
+    this._pushUndoState();
+    const img = new Image();
+    img.onload = () => {
+      const cc = this._state.cropCorners;
+      const w = img.width, h = img.height;
+      const x1 = Math.floor(cc.tl.x * w), y1 = Math.floor(cc.tl.y * h);
+      const x2 = Math.floor(cc.br.x * w), y2 = Math.floor(cc.br.y * h);
+      const cw = Math.max(1, x2 - x1), ch = Math.max(1, y2 - y1);
+      if (cw >= w && ch >= h) { this._showToast('未选择裁剪区域'); return; }
+      const c = document.createElement('canvas');
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      c.width = cw; c.height = ch;
+      ctx.drawImage(img, x1, y1, cw, ch, 0, 0, cw, ch);
+      this._state.originalImage = c.toDataURL('image/jpeg', 1.0);
+      this._resetCropCorners();
+      if (this._state.isAutoCorrect) this._initCorrectCorners();
+      this._renderPreview();
+      this._showToast('已裁剪');
+    };
+    img.src = this._state.originalImage;
+  }
+
+  /* ====================== Gallery ====================== */
+  _openGallery() {
+    const modal = this._el.galleryModal;
+    const grid = this._el.galleryGrid;
+    this._el.galleryTotal.textContent = this._state.capturedImages.length;
+    grid.innerHTML = '';
+    this._renderGalleryItems(grid);
+    this._updateSelectAllBtn();
+    this._updateExportCount();
+    this._el.progressWrap.classList.remove('active');
+    modal.classList.add('active');
+  }
+
+  _renderGalleryItems(grid) {
+    const s = this._state;
+    s.capturedImages.forEach((img, idx) => {
+      const item = document.createElement('div');
+      item.className = 'gallery-item';
+      item.draggable = true;
+      item.dataset.gIndex = idx;
+      const dn = img.displayName || img.fileName;
+      item.innerHTML = `<img src="${img.data}" alt=""><div class="filename-edit" contenteditable="true">${this._escapeHtml(dn)}</div>`;
+      if (img.ocrText) {
+        const badge = document.createElement('div');
+        badge.className = 'ocr-badge'; badge.textContent = 'OCR';
+        item.appendChild(badge);
+      }
+      const editDiv = item.querySelector('.filename-edit');
+      editDiv.addEventListener('blur', () => {
+        const newName = editDiv.innerText.trim();
+        if (newName && newName !== (img.displayName || img.fileName)) {
+          img.displayName = newName;
+          this._saveToDB(img);
+          this._showToast(`已重命名: ${newName}`);
+        } else if (!newName) editDiv.innerText = img.displayName || img.fileName;
+      });
+      editDiv.addEventListener('click', e => e.stopPropagation());
+      item.addEventListener('click', e => {
+        if (e.target === editDiv) return;
+        const id = img.id;
+        if (s.selectedIds.has(id)) { s.selectedIds.delete(id); item.classList.remove('selected'); }
+        else { s.selectedIds.add(id); item.classList.add('selected'); }
+        this._updateSelectAllBtn();
+        this._updateExportCount();
+      });
+      if (s.selectedIds.has(img.id)) item.classList.add('selected');
+      this._initDragEvents(item, img, idx);
+      grid.appendChild(item);
+    });
+  }
+
+  _initDragEvents(item, img, idx) {
+    item.addEventListener('dragstart', e => {
+      this._state.dragId = img.id;
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      document.querySelectorAll('.gallery-item').forEach(el => el.classList.remove('drag-over'));
+      this._state.dragId = null;
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.gallery-item').forEach(el => el.classList.remove('drag-over'));
+      item.classList.add('drag-over');
+    });
+    item.addEventListener('drop', e => {
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      const fromId = this._state.dragId;
+      if (!fromId || fromId === img.id) return;
+      const imgs = this._state.capturedImages;
+      const fromIdx = imgs.findIndex(i => i.id === fromId);
+      const toIdx = idx;
+      if (fromIdx === -1) return;
+      const [moved] = imgs.splice(fromIdx, 1);
+      imgs.splice(toIdx, 0, moved);
+      this._selectedIdsFix();
+      this._saveAllToDB();
+      this._openGallery();
+      this._showToast('已调整顺序');
+    });
+  }
+
+  _selectedIdsFix() {
+    const ids = new Set();
+    this._state.capturedImages.forEach(i => { if (this._state.selectedIds.has(i.id)) ids.add(i.id); });
+    this._state.selectedIds = ids;
+  }
+
+  _closeGallery() { this._el.galleryModal.classList.remove('active'); }
+
+  _toggleSelectAll() {
+    const s = this._state;
+    if (s.isAllSelected) { s.selectedIds.clear(); }
+    else { s.selectedIds = new Set(s.capturedImages.map(i => i.id)); }
+    s.isAllSelected = !s.isAllSelected;
+    this._openGallery();
+  }
+
+  _updateSelectAllBtn() {
+    const s = this._state;
+    const total = s.capturedImages.length;
+    const sel = s.selectedIds.size;
+    s.isAllSelected = sel === total && total > 0;
+    this._el.selectAllBtn.textContent = s.isAllSelected ? '取消全选' : '全选';
+  }
+
+  _updateExportCount() {
+    const s = this._state;
+    this._el.exportCount.textContent = s.selectedIds.size > 0 ? s.selectedIds.size : s.capturedImages.length;
+  }
+
+  _deleteSelected() {
+    const s = this._state;
+    if (!s.selectedIds.size) { this._showToast('请先选择'); return; }
+    if (!confirm(`删除 ${s.selectedIds.size} 个？`)) return;
+    s.capturedImages = s.capturedImages.filter(i => !s.selectedIds.has(i.id));
+    s.selectedIds.clear();
+    this._saveAllToDB();
+    this._openGallery();
+    this._updateGalleryCount();
+    this._showToast('已删除');
+  }
+
+  _sortByName() {
+    const s = this._state;
+    if (!s.capturedImages.length) { this._showToast('没有图片'); return; }
+    s.capturedImages.sort((a, b) => {
+      return (a.displayName || a.fileName).localeCompare(b.displayName || b.fileName, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    s.selectedIds.clear();
+    this._saveAllToDB();
+    this._openGallery();
+    this._showToast('已按文件名排序');
+  }
+
+  _setDPI(dpi, el) {
+    this._state.currentDPI = dpi;
+    document.querySelectorAll('[data-cmd="setDPI"]').forEach(b => b.classList.remove('active'));
+    if (el) el.classList.add('active');
+    this._showToast(`DPI 设为 ${dpi}`);
+  }
+
+  /* ====================== PDF Export ====================== */
+  async _exportPDF() {
+    const s = this._state;
+    if (!s.capturedImages.length) { this._showToast('没有图片'); return; }
+    let imgs = [...s.capturedImages];
+    imgs.sort((a, b) => (a.displayName || a.fileName).localeCompare(b.displayName || b.fileName, undefined, { numeric: true, sensitivity: 'base' }));
+    const fileList = imgs.map((img, i) => `${i+1}. ${img.displayName || img.fileName}`).join('\n');
+    if (!confirm(`即将按以下顺序导出 PDF：\n\n${fileList}\n\n是否继续？`)) return;
+    this._showProcessing('初始化 PDF...');
+    this._el.progressWrap.classList.add('active');
+    this._el.exportProgress.value = 0;
+    this._el.progressText.textContent = '0%';
+    try {
+      const { PDFDocument } = PDFLib;
+      const pdfDoc = await PDFDocument.create();
+      const { width: a4W, height: a4H } = this._getA4Size(s.currentDPI);
+      let successCount = 0;
+      for (let i = 0; i < imgs.length; i++) {
+        try {
+          this._el.progressText.textContent = `处理 ${i+1}/${imgs.length}`;
+          this._el.exportProgress.value = (i / imgs.length) * 100;
+          const img = await this._loadImage(imgs[i].data);
+          const c = document.createElement('canvas');
+          const ctx = c.getContext('2d');
+          c.width = a4W; c.height = a4H;
+          ctx.fillStyle = 'white'; ctx.fillRect(0, 0, a4W, a4H);
+          const ratio = img.width / img.height;
+          const a4Ratio = a4W / a4H;
+          let dw, dh, ox, oy;
+          if (ratio > a4Ratio) { dw = a4W; dh = a4W / ratio; ox = 0; oy = (a4H - dh) / 2; }
+          else { dh = a4H; dw = a4H * ratio; ox = (a4W - dw) / 2; oy = 0; }
+          ctx.drawImage(img, ox, oy, dw, dh);
+          const jpeg = c.toDataURL('image/jpeg', 0.85);
+          const embed = await pdfDoc.embedJpg(jpeg.split(',')[1]);
+          const page = pdfDoc.addPage([595.28, 841.89]);
+          page.drawImage(embed, { x: 0, y: 0, width: 595.28, height: 841.89 });
+          successCount++;
+        } catch (e) { console.error(`导出第 ${i+1} 张失败:`, e); }
+        if (i % 2 === 0) await new Promise(r => setTimeout(r, 5));
+      }
+      this._el.exportProgress.value = 100;
+      this._el.progressText.textContent = '生成 PDF...';
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `扫描文档_${new Date().toLocaleDateString()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      const msg = `导出成功 ${successCount}/${imgs.length} 页` + (successCount < imgs.length ? `，${imgs.length - successCount} 页失败` : '');
+      this._showToast(msg);
+    } catch (e) { console.error(e); this._showToast('导出失败: ' + e.message); }
+    finally { this._hideProcessing(); this._el.progressWrap.classList.remove('active'); }
+  }
+
+  _getA4Size(dpi) {
+    const inchPerMM = 1 / 25.4;
+    return { width: Math.round(210 * inchPerMM * dpi), height: Math.round(297 * inchPerMM * dpi) };
+  }
+
+  _loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
+
+  /* ====================== OCR ====================== */
+  _setOCREngine(engine, el) {
+    this._state.ocrEngine = engine;
+    document.querySelectorAll('[data-cmd="setEngine"]').forEach(b => b.classList.remove('active'));
+    if (el) el.classList.add('active');
+    this._el.glmConfig.classList.toggle('active', engine === 'glm');
+    if (engine === 'glm') {
+      const saved = localStorage.getItem('lens_glm_key');
+      if (saved) { this._el.glmKeyInput.value = saved; this._state.glmApiKey = saved; this._state.glmRemember = true; this._el.glmRemember.checked = true; this._el.glmStatus.textContent = '✓ Key 已加载'; }
+    }
+    this._showToast(`引擎: ${engine === 'tesseract' ? 'Tesseract' : 'GLM-4.6V-Flash'}`);
+  }
+
+  _setOCRLang(lang, el) {
+    this._state.ocrLang = lang;
+    document.querySelectorAll('[data-cmd="setLang"]').forEach(b => b.classList.remove('active'));
+    if (el) el.classList.add('active');
+  }
+
+  _setOCRMode(mode, el) {
+    this._state.ocrMode = mode;
+    document.querySelectorAll('[data-cmd="setOCRMode"]').forEach(b => b.classList.remove('active'));
+    if (el) el.classList.add('active');
+  }
+
+  async _recognizeText() {
+    const s = this._state;
+    if (s.isOCRProcessing) { this._showToast('正在识别中，请稍候...'); return; }
+    if (s.ocrEngine === 'glm') {
+      const key = this._el.glmKeyInput.value.trim();
+      if (!key) { this._showToast('请先输入智谱 API Key'); this._el.glmKeyInput.focus(); return; }
+      s.glmApiKey = key;
+      if (this._el.glmRemember.checked) { localStorage.setItem('lens_glm_key', key); s.glmRemember = true; }
+    }
+    s.isOCRProcessing = true;
+    try {
+      let text = '', time = 0;
+      const canvas = this._el.previewCanvas;
+      if (s.ocrEngine === 'tesseract') {
+        ({ text, time } = await this._tesseractOCR(canvas));
+      } else {
+        ({ text, time } = await this._glmOCR(canvas));
+      }
+      this._el.ocrText.value = text;
+      this._el.ocrCharCount.textContent = `字符:${text.length}`;
+      this._el.ocrTime.textContent = `用时:${time.toFixed(2)}s`;
+      if (s.ocrEngine === 'glm') this._el.ocrTokens.style.display = '';
+      else this._el.ocrTokens.style.display = 'none';
+      if (text.trim()) this._showToast(`识别完成 ${time.toFixed(2)}秒`);
+      else this._showToast('未识别到文字');
+      this._el.ocrModal.classList.add('active');
+    } catch (e) { console.error(e); this._showToast('OCR 失败: ' + e.message); }
+    finally { s.isOCRProcessing = false; this._hideProcessing(); }
+  }
+
+  async _tesseractOCR(canvas) {
+    this._showProcessing('初始化 OCR 引擎...');
+    const start = Date.now();
+    const s = this._state;
+    let config = { lang: s.ocrLang, logger: m => { if (m.status === 'recognizing text') this._showProcessing(`识别中 ${Math.round(m.progress * 100)}%`); } };
+    config.tessedit_pageseg_mode = s.ocrMode === 'fast' ? Tesseract.PSM.SINGLE_BLOCK : (s.ocrMode === 'accurate' ? Tesseract.PSM.AUTO : Tesseract.PSM.AUTO_OSD);
+    const result = await Tesseract.recognize(canvas, s.ocrLang, config);
+    return { text: result.data.text, time: (Date.now() - start) / 1000 };
+  }
+
+  async _glmOCR(canvas) {
+    this._showProcessing('调用 GLM-4.6V-Flash...');
+    const start = Date.now();
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    const key = this._state.glmApiKey;
+    const prompt = '请识别这张图片中的所有文字，保留原始格式和换行，包括中文、英文、数字、标点符号。';
+    const res = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'glm-4.6v-flash',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: dataUrl } },
+            { type: 'text', text: prompt }
+          ]
+        }],
+        max_tokens: 4096
+      })
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`API ${res.status}: ${errBody.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || '';
+    const tokens = data.usage?.total_tokens || 0;
+    const el = this._el.ocrTokens;
+    el.textContent = `Token:${tokens}`;
+    el.style.display = '';
+    return { text, time: (Date.now() - start) / 1000 };
+  }
+
+  _closeOCR() { this._el.ocrModal.classList.remove('active'); }
+
+  _copyOCRText() {
+    const ta = this._el.ocrText;
+    ta.select();
+    document.execCommand('copy');
+    this._showToast('已复制');
+  }
+
+  _saveOCRText() {
+    const text = this._el.ocrText.value;
+    if (!text.trim()) return;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `OCR_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async _exportOCRToPDF() {
+    const text = this._el.ocrText.value;
+    if (!text.trim()) { this._showToast('没有文本'); return; }
+    this._showProcessing('生成 PDF...');
+    try {
+      const { PDFDocument, StandardFonts, rgb } = PDFLib;
+      const pdfDoc = await PDFDocument.create();
+      const page = pdfDoc.addPage([595.28, 841.89]);
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const fontSize = 12, lh = fontSize * 1.2, margin = 50;
+      const maxW = 595.28 - 2 * margin;
+      const lines = this._splitText(text, font, fontSize, maxW);
+      let y = 841.89 - margin;
+      page.drawText('OCR识别结果', { x: margin, y, size: 16, font, color: rgb(0,0,0) });
+      y -= 30;
+      page.drawText(`识别时间: ${new Date().toLocaleString()} | 引擎: ${this._state.ocrEngine}`, { x: margin, y, size: 8, font, color: rgb(0.5,0.5,0.5) });
+      y -= 20;
+      page.drawLine({ start: { x: margin, y }, end: { x: 595.28 - margin, y }, thickness: 1, color: rgb(0.8,0.8,0.8) });
+      y -= 20;
+      for (const line of lines) {
+        if (y < margin) { pdfDoc.addPage([595.28, 841.89]); y = 841.89 - margin; }
+        page.drawText(line, { x: margin, y, size: fontSize, font, color: rgb(0,0,0) });
+        y -= lh;
+      }
+      const bytes = await pdfDoc.save();
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `OCR结果_${Date.now()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this._showToast('导出成功');
+    } catch (e) { console.error(e); this._showToast('导出失败'); }
+    finally { this._hideProcessing(); }
+  }
+
+  _splitText(text, font, fontSize, maxW) {
+    const lines = [];
+    for (const para of text.split('\n')) {
+      const words = para.split(' ');
+      let cur = '';
+      for (const w of words) {
+        const test = cur ? `${cur} ${w}` : w;
+        if (font.widthOfTextAtSize(test, fontSize) <= maxW) cur = test;
+        else { if (cur) lines.push(cur); cur = w; }
+      }
+      if (cur) lines.push(cur);
+      lines.push('');
+    }
+    return lines;
+  }
+
+  /* ====================== IndexedDB ====================== */
+  _openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('lens-km', 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('images')) {
+          db.createObjectStore('images', { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = () => { this._db = req.result; resolve(); };
+      req.onerror = () => { console.warn('IndexedDB 不可用'); reject(req.error); };
+    });
+  }
+
+  async _saveToDB(imgObj) {
+    try {
+      await this._dbReady;
+      const tx = this._db.transaction('images', 'readwrite');
+      tx.objectStore('images').put(imgObj);
+      await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    } catch (e) { console.warn('DB 保存失败', e); }
+  }
+
+  async _saveAllToDB() {
+    try {
+      await this._dbReady;
+      const tx = this._db.transaction('images', 'readwrite');
+      const store = tx.objectStore('images');
+      store.clear();
+      for (const img of this._state.capturedImages) store.put(img);
+      await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    } catch (e) { console.warn('DB 保存失败', e); }
+  }
+
+  async _restoreFromDB() {
+    try {
+      await this._dbReady;
+      const tx = this._db.transaction('images', 'readonly');
+      const req = tx.objectStore('images').getAll();
+      const results = await new Promise((res, rej) => {
+        req.onsuccess = () => res(req.result);
+        req.onerror = rej;
+      });
+      if (results && results.length) {
+        this._state.capturedImages = results;
+        this._updateGalleryCount();
+      }
+    } catch (e) { console.warn('DB 恢复失败', e); }
+  }
+}
+
+/* ====================== Init ====================== */
+document.addEventListener('DOMContentLoaded', () => {
+  window.app = new LensApp();
+});
+
+/* ====================== Service Worker ====================== */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').then(reg => {
+    console.log('SW 注册成功，作用域:', reg.scope);
+  }).catch(err => {
+    console.error('SW 注册失败:', err);
+  });
+}
 </script>
 </body>
 </html>
