@@ -63,3 +63,7 @@ python3 -m http.server 8080  # 在项目根目录运行
 ## 部署
 - GitHub Pages：`https://unplage.github.io/lens-km/`
 - Service Worker 的 `BASE_PATH` 自动从 `self.location.pathname` 推断
+
+## Service Worker 更新规则
+- **每次修改 `index.html` 后必须更新 `sw.js`** — 至少将缓存版本号 `vX` 递增（如 `v1` → `v2`），否则浏览器不会拉取新内容
+- 版本号位于 `CACHE_NAME` 中，格式：`pwa-cache-<BASE_PATH>-v<数字>`
