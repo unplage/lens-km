@@ -231,6 +231,14 @@ progress::-webkit-progress-value{background:var(--accent);border-radius:3px}
   <button data-cmd="exportAllOCR" class="ocr-nav-btn active">全部导出</button>
 </div>
 <div class="ocr-format-selector">
+  <span class="text-xs text-[var(--text2)] mr-1">识别分辨率:</span>
+  <button data-cmd="setOCRMaxDim" data-dim="512" class="format-btn">512</button>
+  <button data-cmd="setOCRMaxDim" data-dim="1024" class="format-btn">1024</button>
+  <button data-cmd="setOCRMaxDim" data-dim="1536" class="format-btn">1536</button>
+  <button data-cmd="setOCRMaxDim" data-dim="2048" class="format-btn active">2048</button>
+  <span class="text-xs text-[var(--text2)] ml-2" id="ocrTokenEstimate"></span>
+</div>
+<div class="ocr-format-selector">
   <span class="text-xs text-[var(--text2)] mr-1">格式:</span>
   <button data-cmd="setOCRFormat" data-format="text" class="format-btn active">纯文本</button>
   <button data-cmd="setOCRFormat" data-format="markdown" class="format-btn">Markdown</button>
@@ -274,6 +282,7 @@ class LensApp {
       isAutoCorrect: true, correctMode: false,
       correctCorners: [], activeCorrectHandle: null,
       ocrOutputFormat: 'text', ocrBatchResults: [], ocrBatchIndex: 0,
+      ocrMaxDim: 2048, lastOCRTokenEstimate: 0,
       mimoApiKey: '', mimoBaseUrl: 'https://api.xiaomimimo.com/v1', mimoRemember: false,
       isOCRProcessing: false, currentDPI: 300,
       isExporting: false, pendingUploads: [],
@@ -301,7 +310,7 @@ class LensApp {
     gid('selectAllBtn'); gid('exportCount'); gid('fileInput');
     gid('ocrModal'); gid('ocrText'); gid('ocrCharCount'); gid('ocrTime'); gid('ocrTokens');
     gid('ocrModalTitle'); gid('ocrFileName'); gid('ocrBatchBar'); gid('ocrBatchName'); gid('ocrBatchCounter');
-    gid('ocrPrevBtn'); gid('ocrNextBtn');
+    gid('ocrPrevBtn'); gid('ocrNextBtn'); gid('ocrTokenEstimate');
     gid('mimoKeyInput'); gid('mimoBaseUrlInput'); gid('mimoConfig'); gid('mimoStatus'); gid('mimoRemember');
     gid('progressWrap'); gid('exportProgress'); gid('progressText');
     gid('correctToggle'); gid('undoBtn'); gid('progressIndicator');
@@ -348,6 +357,7 @@ class LensApp {
       case 'exportOCRJSON': this._exportOCRJSON(); break;
       case 'exportOCRToPDF': this._exportOCRToPDF(); break;
       case 'setOCRFormat': this._setOCRFormat(t.dataset.format, t); break;
+      case 'setOCRMaxDim': this._setOCRMaxDim(parseInt(t.dataset.dim), t); break;
       case 'batchOCR': this._batchOCR(); break;
       case 'ocrPrev': this._ocrPrev(); break;
       case 'ocrNext': this._ocrNext(); break;
@@ -1389,6 +1399,13 @@ class LensApp {
     this._renderOCRResult();
   }
 
+  _setOCRMaxDim(dim, el) {
+    this._state.ocrMaxDim = dim;
+    localStorage.setItem('lens_mimo_dim', String(dim));
+    document.querySelectorAll('[data-cmd="setOCRMaxDim"]').forEach(b => b.classList.remove('active'));
+    if (el) el.classList.add('active');
+  }
+
   _loadMimoConfig() {
     const saved = localStorage.getItem('lens_mimo_key');
     if (saved) {
@@ -1401,6 +1418,11 @@ class LensApp {
     const base = localStorage.getItem('lens_mimo_base') || 'https://api.xiaomimimo.com/v1';
     this._el.mimoBaseUrlInput.value = base;
     this._state.mimoBaseUrl = base;
+    const dim = parseInt(localStorage.getItem('lens_mimo_dim')) || 2048;
+    this._state.ocrMaxDim = dim;
+    document.querySelectorAll('[data-cmd="setOCRMaxDim"]').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.dim) === dim);
+    });
     this._updateApiStatusDot();
   }
 
@@ -1438,7 +1460,8 @@ class LensApp {
     this._state.mimoBaseUrl = base;
     this._saveMimoConfig(key, base);
     const start = Date.now();
-    const src = await this._downscaleForOCR(dataUrl, 2048);
+    const src = await this._downscaleForOCR(dataUrl, this._state.ocrMaxDim);
+    this._el.ocrTokenEstimate.textContent = `≈ ${this._state.lastOCRTokenEstimate} 图片Token`;
     const sysPrompt =
       '你是 MiMo，一个精准的多模态 OCR 引擎。请完整识别图片中的所有文字并返回结构化 JSON。只返回 JSON，不要任何解释、注释或 Markdown 代码块。\n' +
       '返回格式（bbox 为 0~1 归一化坐标 [x0,y0,x1,y1]，以图片左上角为原点，未知字段填 null）：\n' +
@@ -1502,13 +1525,18 @@ class LensApp {
 
   async _downscaleForOCR(dataUrl, maxDim) {
     const img = await this._loadImage(dataUrl);
-    if (img.width <= maxDim && img.height <= maxDim) return dataUrl;
-    const scale = maxDim / Math.max(img.width, img.height);
-    const c = document.createElement('canvas');
-    c.width = Math.round(img.width * scale);
-    c.height = Math.round(img.height * scale);
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    return c.toDataURL('image/jpeg', 0.9);
+    let w = img.width, h = img.height;
+    let src = dataUrl;
+    if (w > maxDim || h > maxDim) {
+      const scale = maxDim / Math.max(w, h);
+      w = Math.round(w * scale); h = Math.round(h * scale);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      src = c.toDataURL('image/jpeg', 0.9);
+    }
+    this._state.lastOCRTokenEstimate = Math.max(8, Math.round((w * h) / 1024));
+    return src;
   }
 
   async _recognizeText() {
