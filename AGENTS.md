@@ -17,7 +17,6 @@ python3 -m http.server 8080  # 在项目根目录运行
 ## CDN 外部依赖（需联网）
 - `cdn.tailwindcss.com` — Tailwind CSS（非必需，仅辅助样式）
 - `cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js` — PDF 生成
-- `cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js` — 客户端 OCR
 
 ## 架构要点
 - **`LensApp` 类**：所有逻辑封装在一个类中，`_state` 集中管理状态，方法按 `_camera`/`_filters`/`_editor`/`_gallery`/`_ocr`/`_pdf`/`_persist` 分组
@@ -33,15 +32,20 @@ python3 -m http.server 8080  # 在项目根目录运行
 - 扫描模式：白板/文档/照片/名片/OCR
 - 滤镜（11 个）：原图/白板/文档/灰度/黑白/自动增强/深度对比/提亮/反色/降噪/魔法
 - 编辑：旋转/裁剪（预览确认模式）/透视校正（半自动，拖拽四角）/撤销
-- OCR 引擎：**Tesseract.js**（浏览器本地）或 **GLM-4.6V-Flash**（智谱 API，需输入 Key）
+- OCR 引擎：**MiMo-V2.5**（小米多模态 API，需输入 Key）
 - 导出：PDF（可选 DPI 150-300）、TXT、按文件名排序、进度条
 - 其他：闪光灯、前后相机切换、数码变焦、相册拖拽排序、可编辑文件名
 
-## OCR — GLM-4.6V-Flash
-- 引擎选择器中切换到 `GLM-4.6V-Flash`，输入智谱 API Key
-- Key 可勾选"记住"（存入 `localStorage`），默认仅存 `sessionStorage`
-- API 地址：`https://open.bigmodel.cn/api/paas/v4/chat/completions`
-- 模型：`glm-4.6v-flash`，支持中文/英文等多语言文字识别
+## OCR — MiMo-V2.5（小米）
+- 唯一 OCR 引擎，完全替代旧 Tesseract.js / GLM-4.6V-Flash
+- API：OpenAI 兼容 `https://api.xiaomimimo.com/v1/chat/completions`，模型 `mimo-v2.5`
+- 鉴权：请求头 `api-key`；Key 格式 `sk-`（按量付费）或 `tp-`（Token Plan）
+- 双 Base URL：默认按量付费地址；Token Plan 用户可填专属地址 `https://token-plan-cn.xiaomimimo.com/v1`
+- Key/Base URL 勾选"记住"存入 `localStorage`，Key 输入框默认仅不持久化
+- 图片以 base64 dataURL 传入（自动缩放最大边 ≤2048px 控制 Token 成本）
+- 结构化输出：`response_format: {"type":"json_object"}`，返回 `{text, markdown, blocks[含归一化 bbox], tables, kv_pairs}`
+- 批量识别：相册多选 → 「OCR识别」，并发 3 张，逐张回写 `ocrText/ocrJson/ocrMarkdown` 并持久化
+- 导出：单张 TXT/Markdown/JSON/PDF；批量模式可「全部导出」（按当前格式合并）
 - 显示识别耗时、Token 消耗
 
 ## 透视校正（自动校正）
