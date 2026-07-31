@@ -83,8 +83,8 @@ progress::-webkit-progress-value{background:var(--accent);border-radius:3px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .crop-frame{position:absolute;border:2px solid var(--accent);box-shadow:0 0 0 9999px rgba(0,0,0,0.8);display:none;pointer-events:none;z-index:5}
 .crop-frame.active{display:block}
-.crop-handle{position:absolute;width:30px;height:30px;background:var(--accent);border-radius:50%;cursor:move;z-index:10;border:3px solid white;box-shadow:0 2px 10px rgba(0,0,0,0.5);pointer-events:auto}
-.correct-handle{position:absolute;width:22px;height:22px;background:#ff6b6b;border-radius:50%;cursor:move;z-index:6;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.6);pointer-events:auto;transform:translate(-50%,-50%)}
+.crop-handle{position:absolute;width:30px;height:30px;background:var(--accent);border-radius:50%;cursor:move;z-index:12;border:3px solid white;box-shadow:0 2px 10px rgba(0,0,0,0.5);pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+.correct-handle{position:absolute;width:22px;height:22px;background:#ff6b6b;border-radius:50%;cursor:move;z-index:6;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.6);pointer-events:auto;transform:translate(-50%,-50%);touch-action:none;user-select:none;-webkit-user-select:none}
 .correct-handle::after{content:attr(data-label);position:absolute;left:28px;top:50%;transform:translateY(-50%);color:white;font-size:11px;font-weight:600;background:rgba(0,0,0,0.7);padding:2px 8px;border-radius:4px;white-space:nowrap}
 .flash-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:white;opacity:0;pointer-events:none;z-index:40;transition:opacity .1s}
 .flash-overlay.active{opacity:1}
@@ -139,10 +139,18 @@ progress::-webkit-progress-value{background:var(--accent);border-radius:3px}
   <button data-cmd="toggleFlash" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
   </button>
-  <div class="text-white font-semibold text-sm tracking-wide">Lens Scanner</div>
-  <button data-cmd="switchCamera" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-  </button>
+  <div class="flex items-center gap-2">
+    <span id="apiStatusDot" class="w-2 h-2 rounded-full bg-gray-500" style="display:none"></span>
+    <div class="text-white font-semibold text-sm tracking-wide">Lens Scanner</div>
+  </div>
+  <div class="flex items-center gap-2">
+    <button data-cmd="openOCRConfig" title="设置 MiMo API Key" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+    </button>
+    <button data-cmd="switchCamera" class="w-10 h-10 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white border border-white/20">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+    </button>
+  </div>
 </div>
 <div class="zoom-controls"><button data-cmd="setZoom" data-zoom="1" class="zoom-btn active" id="zoom1">1x</button><button data-cmd="setZoom" data-zoom="2" class="zoom-btn" id="zoom2">2x</button></div>
 <div class="mode-selector">
@@ -261,7 +269,7 @@ class LensApp {
       currentFilter: 'original', currentImage: null, originalImage: null,
       capturedImages: [], selectedIds: new Set(),
       undoStack: [], undoMax: 20,
-      isCropping: false, activeHandle: null,
+      isCropping: false, activeHandle: null, cropPointerId: null,
       cropCorners: { tl: {x:0,y:0}, tr: {x:1,y:0}, bl: {x:0,y:1}, br: {x:1,y:1} },
       isAutoCorrect: true, correctMode: false,
       correctCorners: [], activeCorrectHandle: null,
@@ -297,6 +305,7 @@ class LensApp {
     gid('mimoKeyInput'); gid('mimoBaseUrlInput'); gid('mimoConfig'); gid('mimoStatus'); gid('mimoRemember');
     gid('progressWrap'); gid('exportProgress'); gid('progressText');
     gid('correctToggle'); gid('undoBtn'); gid('progressIndicator');
+    gid('apiStatusDot');
   }
 
   _initEventDelegation() {
@@ -321,6 +330,7 @@ class LensApp {
       case 'switchCamera': this._switchCamera(); break;
       case 'setZoom': this._setZoom(parseInt(t.dataset.zoom)); break;
       case 'setMode': this._setMode(t.dataset.mode, t); break;
+      case 'openOCRConfig': this._openOCRConfig(); break;
       case 'openGallery': this._openGallery(); break;
       case 'closeGallery': this._closeGallery(); break;
       case 'closePreview': this._closePreview(true); break;
@@ -1092,22 +1102,26 @@ class LensApp {
   }
 
   _initCropDrag() {
-    const handles = document.querySelectorAll('.crop-handle');
-    const onStart = (e) => {
-      e.preventDefault(); e.stopPropagation();
-      this._state.activeHandle = e.target.dataset.corner;
-      const onMove = (ev) => this._onCropDrag(ev);
-      const onEnd = () => {
-        this._state.activeHandle = null;
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('touchmove', onMove);
-      };
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onEnd, { once: true });
-      document.addEventListener('touchmove', onMove, { passive: false });
-      document.addEventListener('touchend', onEnd, { once: true });
-    };
-    handles.forEach(h => { h.addEventListener('mousedown', onStart); h.addEventListener('touchstart', onStart, { passive: false }); });
+    document.querySelectorAll('.crop-handle').forEach(h => {
+      if (h.dataset.ptrBound) return;
+      h.dataset.ptrBound = '1';
+      h.addEventListener('pointerdown', e => this._onCropPointerDown(e, h));
+      h.addEventListener('pointermove', e => this._onCropDrag(e));
+      h.addEventListener('pointerup', () => this._endCropDrag());
+      h.addEventListener('pointercancel', () => this._endCropDrag());
+    });
+  }
+
+  _onCropPointerDown(e, handle) {
+    e.preventDefault();
+    this._state.activeHandle = handle.dataset.corner;
+    this._state.cropPointerId = e.pointerId;
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  _endCropDrag() {
+    this._state.activeHandle = null;
+    this._state.cropPointerId = null;
   }
 
   _onCropDrag(e) {
@@ -1115,10 +1129,8 @@ class LensApp {
     e.preventDefault();
     const canvas = this._el.previewCanvas;
     const rect = canvas.getBoundingClientRect();
-    const cx = e.touches ? e.touches[0].clientX : e.clientX;
-    const cy = e.touches ? e.touches[0].clientY : e.clientY;
-    let x = Math.max(0, Math.min(1, (cx - rect.left) / rect.width));
-    let y = Math.max(0, Math.min(1, (cy - rect.top) / rect.height));
+    let x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    let y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
     const cc = this._state.cropCorners;
     switch (this._state.activeHandle) {
       case 'tl': cc.tl.x = Math.min(x, cc.tr.x - 0.05); cc.tl.y = Math.min(y, cc.bl.y - 0.05); break;
@@ -1389,6 +1401,24 @@ class LensApp {
     const base = localStorage.getItem('lens_mimo_base') || 'https://api.xiaomimimo.com/v1';
     this._el.mimoBaseUrlInput.value = base;
     this._state.mimoBaseUrl = base;
+    this._updateApiStatusDot();
+  }
+
+  _updateApiStatusDot() {
+    const el = this._el.apiStatusDot;
+    if (!el) return;
+    const hasKey = !!(localStorage.getItem('lens_mimo_key') || this._el.mimoKeyInput.value.trim());
+    el.style.display = '';
+    el.className = `w-2 h-2 rounded-full ${hasKey ? 'bg-[var(--accent)]' : 'bg-gray-500'}`;
+  }
+
+  _openOCRConfig() {
+    this._loadMimoConfig();
+    this._state.ocrBatchResults = [];
+    this._state.ocrBatchIndex = 0;
+    this._el.ocrText.value = '';
+    this._el.ocrModal.classList.add('active');
+    setTimeout(() => this._el.mimoKeyInput.focus(), 50);
   }
 
   _saveMimoConfig(key, base) {
@@ -1397,6 +1427,7 @@ class LensApp {
       localStorage.setItem('lens_mimo_base', base);
       this._state.mimoRemember = true;
     }
+    this._updateApiStatusDot();
   }
 
   async _mimoOCR(dataUrl) {

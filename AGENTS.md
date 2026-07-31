@@ -42,6 +42,7 @@ python3 -m http.server 8080  # 在项目根目录运行
 - 鉴权：请求头 `api-key`；Key 格式 `sk-`（按量付费）或 `tp-`（Token Plan）
 - 双 Base URL：默认按量付费地址；Token Plan 用户可填专属地址 `https://token-plan-cn.xiaomimimo.com/v1`
 - Key/Base URL 勾选"记住"存入 `localStorage`，Key 输入框默认仅不持久化
+- 相机顶栏 🔑 按钮（`openOCRConfig`）可直接打开 Key 配置；标题旁圆点绿=已配置 Key、灰=未配置
 - 图片以 base64 dataURL 传入（自动缩放最大边 ≤2048px 控制 Token 成本）
 - 结构化输出：`response_format: {"type":"json_object"}`，返回 `{text, markdown, blocks[含归一化 bbox], tables, kv_pairs}`
 - 批量识别：相册多选 → 「OCR识别」，并发 3 张，逐张回写 `ocrText/ocrJson/ocrMarkdown` 并持久化
