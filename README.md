@@ -12,10 +12,14 @@
 - 相册：多选、拖拽排序、点击底部可修改文件名、按文件名排序导出
 - 导出：PDF（可选 DPI 150-300）、TXT
 
-## OCR（MiMo-V2.5，需配置 API Key）
-- 引擎：小米 **MiMo-V2.5** 多模态 API（`mimo-v2.5`，OpenAI 兼容）
-- 入口：相机顶栏 🔑 按钮配置 Key / Base URL（支持按量付费 `sk-` 与 Token Plan `tp-`）
-- 识别分辨率可选 512/1024/1536/2048，识别前显示预估图片 Token（越小越省，小字选大）
+## OCR（多引擎，需配置 API Key）
+- 引擎：内置多厂商预设，**可在 UI 下拉切换**，支持任意 OpenAI 兼容 API
+  - **小米 MiMo-V2.5**（`mimo-v2.5`，按量付费 `sk-` / Token Plan `tp-`）
+  - **OpenAI GPT-4o-mini** / **DeepSeek** / **阿里 Qwen-VL** / **智谱 GLM-4V**
+  - **自定义**：自由填写 Base URL / 模型名 / 鉴权头（api-key / Bearer / x-api-key）
+- 各厂商 Key / Base URL / 模型独立持久化，切换自动加载
+- 入口：相机顶栏 🔑 按钮配置（勾选"记住"存 localStorage）
+- 识别分辨率可选 512/1024/1536/2048，识别前显示预估图片 Token
 - 支持单张（预览页 OCR）与批量（相册多选 → OCR识别，并发 3 张）
 - 结构化输出：纯文本 / Markdown / JSON（含文本块、归一化 bbox、表格、键值对）
 - 导出：TXT / Markdown / JSON / PDF，批量可一键全部导出

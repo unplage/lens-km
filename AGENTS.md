@@ -32,17 +32,16 @@ python3 -m http.server 8080  # 在项目根目录运行
 - 扫描模式：白板/文档/照片/名片/OCR
 - 滤镜（11 个）：原图/白板/文档/灰度/黑白/自动增强/深度对比/提亮/反色/降噪/魔法
 - 编辑：旋转/裁剪（预览确认模式）/透视校正（半自动，拖拽四角）/撤销
-- OCR 引擎：**MiMo-V2.5**（小米多模态 API，需输入 Key）
+- OCR 引擎：**多引擎可选**（MiMo/OpenAI/DeepSeek/Qwen/GLM/自定义，需输入 API Key）
 - 导出：PDF（可选 DPI 150-300）、TXT、按文件名排序、进度条
 - 其他：闪光灯、前后相机切换、数码变焦、相册拖拽排序、可编辑文件名
 
-## OCR — MiMo-V2.5（小米）
-- 唯一 OCR 引擎，完全替代旧 Tesseract.js / GLM-4.6V-Flash
-- API：OpenAI 兼容 `https://api.xiaomimimo.com/v1/chat/completions`，模型 `mimo-v2.5`
-- 鉴权：请求头 `api-key`；Key 格式 `sk-`（按量付费）或 `tp-`（Token Plan）
-- 双 Base URL：默认按量付费地址；Token Plan 用户可填专属地址 `https://token-plan-cn.xiaomimimo.com/v1`
-- Key/Base URL 勾选"记住"存入 `localStorage`，Key 输入框默认仅不持久化
-- 相机顶栏 🔑 按钮（`openOCRConfig`）可直接打开 Key 配置；标题旁圆点绿=已配置 Key、灰=未配置
+## OCR — 多引擎可选
+- **多引擎预设**：小米 MiMo-V2.5 / OpenAI GPT-4o-mini / DeepSeek / 阿里 Qwen-VL / 智谱 GLM-4V / 自定义
+- **配置**：相机顶栏 🔑 按钮（`openOCRConfig`）打开配置弹窗，下拉选择厂商，输入 Key / Base URL / 模型名
+- **鉴权可配**：支持 `api-key`、`Authorization: Bearer`、`x-api-key` 三种鉴权头
+- **各厂商独立存储**：勾选"记住"后 Key/Base URL/模型/鉴权头按厂商分别存入 `localStorage`
+- **向后兼容**：已有 MiMo Key 用户切换至"小米 MiMo"自动加载，无需重新配置
 - 图片以 base64 dataURL 传入（自动缩放最大边 ≤2048px 控制 Token 成本）
 - 识别分辨率可调：512/1024/1536/2048（OCR 弹窗内选择，存 localStorage），识别前显示预估图片 Token（≈ 像素/1024）
 - 结构化输出：`response_format: {"type":"json_object"}`，返回 `{text, markdown, blocks[含归一化 bbox], tables, kv_pairs}`
