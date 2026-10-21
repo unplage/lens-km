@@ -10,9 +10,11 @@ python3 -m http.server 8080  # 在项目根目录运行
 ```
 
 ## 关键文件
-- `index.html` — 唯一应用文件（~1600 行，`LensApp` 类架构）
+- `index.html` — 唯一应用文件（~1900 行，`LensApp` 类架构）
 - `manifest.json` — PWA 清单，`start_url: "/lens-km/"`（部署在 GitHub Pages 子路径）
 - `sw.js` — Service Worker，**动态 BASE_PATH**（从自身路径推断缓存作用域）
+- `icons/` — PWA 图标（192/512/maskable/apple-touch/favicon + `icon.svg` 源）
+- `tools/make_icons.py` — 图标生成脚本（Pillow，`python3 tools/make_icons.py` 可重生成）
 
 ## CDN 外部依赖（需联网）
 - `cdn.tailwindcss.com` — Tailwind CSS（非必需，仅辅助样式）
@@ -21,11 +23,13 @@ python3 -m http.server 8080  # 在项目根目录运行
 ## 架构要点
 - **`LensApp` 类**：所有逻辑封装在一个类中，`_state` 集中管理状态，方法按 `_camera`/`_filters`/`_editor`/`_gallery`/`_ocr`/`_pdf`/`_persist` 分组
 - **事件委托**：HTML 无 `onclick` 属性，全部通过 `data-cmd` 属性 + `_onClick` 统一分发
-- **渲染管线**：`originalImage` → (透视校正) → (滤镜) → `currentImage`，无双重滤镜问题
+- **截图取景**：`_getCaptureRegion()` 按 `object-fit:cover` + 数字变焦把屏幕扫描框映射回视频像素，截图内容与取景框一致；`readyState < 2` 时先等首帧再 `drawImage`（否则抛 `InvalidStateError`）
+- **渲染管线**：`originalImage` → (透视校正) → (滤镜) → `currentImage`，无双重滤镜问题；`_renderPreview()` 返回 Promise 并在完成时写入 `currentImage`，确认添加只用该值
+- **透视校正**：四角默认贴合整幅截图（无额外裁切），自动校正关闭或四角为整幅时跳过重采样；采样按像素中心 +0.5、输出尺寸按四边长度（保持比例），奇异四边形自动回退原图
 - **持久化**：IndexedDB 存储 `capturedImages`，刷新不丢失
 - **选中机制**：使用 `Set<id>` 而非数组索引，操作后不偏移
-- **撤销栈**：维护 `_undoStack[]`，每次编辑前 push，`Ctrl+Z` 或按钮撤销（最多 20 步）
-- **并发控制**：`_batchProcessUploads` 同时最多处理 3 张，用 `setTimeout(0)` 让出主线程
+- **撤销栈**：维护 `_undoStack[]`（存 `{data, filter, corners}`），每次编辑前 push，`Ctrl+Z` 或按钮撤销（最多 20 步）
+- **并发控制**：`_batchProcessUploads` 同时最多处理 3 张，用 `setTimeout(0)` 让出主线程；`_capture` 有重入锁，连点快门只截一次
 - **PDF 导出**：单张图片失败自动跳过，不影响其他页
 
 ## 功能清单

@@ -1,23 +1,50 @@
 {
-  "name": "文档扫描助手-扫描生成PDF，还有本地OCR功能",
+  "name": "Lens Scanner Pro — 文档扫描与 OCR",
   "short_name": "Lens",
-  "description": "扫描生成pdf，本地OCR",
-  "start_url": "/lens-km/",               
+  "description": "拍照扫描文档，自动透视校正、一键增强，导出 PDF；支持本地多引擎 OCR 识别。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "/lens-km/",
+  "scope": "/lens-km/",
+  "id": "/lens-km/",
   "display": "standalone",
-  "background_color": "#f5f5f5",
-  "theme_color": "#4CAF50",
+  "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait",
-  "scope": "/lens-km/",                     
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "categories": ["productivity", "utilities"],
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%234CAF50' width='192' height='192' rx='20'/%3E%3Ctext x='96' y='120' font-size='80' text-anchor='middle' fill='white'%3EL%3C/text%3E%3C/svg%3E",
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/svg+xml"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect fill='%234CAF50' width='512' height='512' rx='40'/%3E%3Ctext x='256' y='320' font-size='200' text-anchor='middle' fill='white'%3EL%3C/text%3E%3C/svg%3E",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "打开相册",
+      "short_name": "相册",
+      "url": "/lens-km/?action=gallery",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

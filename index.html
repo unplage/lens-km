@@ -6,6 +6,16 @@
 <meta http-equiv="Permissions-Policy" content="camera=(self),microphone=(self)">
 <title>Lens Scanner Pro</title>
 <link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#0a0a0a">
+<meta name="description" content="拍照扫描文档，自动透视校正与增强，导出 PDF，支持多引擎 OCR。">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lens">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon-180.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <style>
@@ -294,14 +304,21 @@ class LensApp {
       ocrProvider: 'mimo',
       isOCRProcessing: false, currentDPI: 300,
       isExporting: false, pendingUploads: [],
-      isAllSelected: false, dragId: null
+      isAllSelected: false, dragId: null, cssZoom: 1
     };
     this._db = null;
     this._dbReady = this._openDB();
+    this._renderToken = 0;
+    this._correctionRaf = 0;
+    this._imgSeq = 0;
+    this._capturing = false;
     this._el = {};
     this._initEls();
     this._initEventDelegation();
-    this._restoreFromDB();
+    this._restoreFromDB().then(() => {
+      // 支持 manifest 快捷方式 ?action=gallery
+      if (new URLSearchParams(location.search).get('action') === 'gallery') this._openGallery();
+    });
     this._loadOCRConfig();
     setTimeout(() => this._initCamera(), 100);
     window.addEventListener('beforeunload', () => this._stopCamera());
@@ -419,9 +436,16 @@ class LensApp {
   }
 
   _onKeydown(e) {
-    if (e.code === 'Space' && this._state.isCameraReady) { e.preventDefault(); this._capture(e); }
-    if (e.code === 'Enter' && this._el.previewContainer.classList.contains('active')) { e.preventDefault(); this._confirmAdd(); }
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); this._undo(); }
+    const t = e.target;
+    const tag = (t && t.tagName ? t.tagName : '').toLowerCase();
+    // 输入框内不触发快捷键（否则在 OCR 文本域里敲空格会误拍照、回车会误确认）
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || (t && t.isContentEditable)) return;
+    const modalOpen = this._el.galleryModal.classList.contains('active')
+      || this._el.ocrModal.classList.contains('active')
+      || this._el.previewContainer.classList.contains('active');
+    if (e.code === 'Space' && this._state.isCameraReady && !modalOpen) { e.preventDefault(); this._capture(e); }
+    if (e.code === 'Enter' && this._el.previewContainer.classList.contains('active') && !this._el.ocrModal.classList.contains('active')) { e.preventDefault(); this._confirmAdd(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key || '').toLowerCase() === 'z' && !this._el.ocrModal.classList.contains('active')) { e.preventDefault(); this._undo(); }
   }
 
   _onTouchmove(e) {
@@ -479,18 +503,42 @@ class LensApp {
       this._state.stream = s;
       const v = this._el.video;
       v.srcObject = s;
-      await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = rej; setTimeout(() => rej('超时'), 10000); });
+      await this._waitForVideoMeta(v, 10000);
       this._state.videoTrack = s.getVideoTracks()[0];
       v.classList.add('active');
+      // 等待首帧解码完成，否则首次截图会拿到空白帧
+      await this._waitForVideoFrame(v, 5000);
       this._state.isCameraReady = true;
       if (['whiteboard','document','ocr'].includes(this._state.currentMode)) this._el.scanOverlay.classList.add('active');
       this._showToast('相机已就绪');
     } catch (err) {
       let msg = '相机权限被拒绝';
-      if (err.name === 'NotFoundError') msg = '未找到相机';
+      const name = err && err.name ? err.name : '';
+      if (name === 'NotFoundError') msg = '未找到相机';
+      else if (name === 'NotReadableError') msg = '相机被其它应用占用';
+      else if (name === 'NotAllowedError') msg = '相机权限被拒绝';
+      else if (name === 'OverconstrainedError') msg = '相机不支持该分辨率';
       else if (err === '超时') msg = '相机启动超时';
+      else if (err && err.message) msg = err.message;
       this._showError('无法访问相机', msg);
     }
+  }
+
+  /* 等待视频元数据（宽高）就绪 */
+  _waitForVideoMeta(video, timeout) {
+    return new Promise((resolve, reject) => {
+      if (video.videoWidth && video.videoHeight) return resolve(true);
+      let settled = false;
+      const finish = err => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        err ? reject(err) : resolve(true);
+      };
+      const timer = setTimeout(() => finish('超时'), timeout);
+      video.onloadedmetadata = () => finish();
+      video.onerror = () => finish(new Error('视频流错误'));
+    });
   }
 
   _stopCamera() {
@@ -518,6 +566,7 @@ class LensApp {
   async _switchCamera() {
     if (!this._state.stream) { this._showToast('相机未启动'); return; }
     this._showProcessing('切换相机...');
+    this._state.isCameraReady = false;
     const cur = this._state.stream.getVideoTracks()[0].getSettings().facingMode;
     const next = cur === 'environment' ? 'user' : 'environment';
     this._state.stream.getTracks().forEach(t => t.stop());
@@ -526,9 +575,16 @@ class LensApp {
       this._state.stream = ns;
       this._state.videoTrack = ns.getVideoTracks()[0];
       this._el.video.srcObject = ns;
+      await this._waitForVideoMeta(this._el.video, 10000);
+      await this._waitForVideoFrame(this._el.video, 5000);
+      this._state.isCameraReady = true;
       this._hideProcessing();
       this._showToast(next === 'environment' ? '后置相机' : '前置相机');
-    } catch(err) { this._hideProcessing(); this._showToast('切换失败'); this._initCamera(); }
+    } catch(err) {
+      this._hideProcessing();
+      this._showToast('切换失败');
+      this._initCamera();
+    }
   }
 
   _setZoom(level) {
@@ -537,10 +593,19 @@ class LensApp {
     document.querySelector(`[data-cmd="setZoom"][data-zoom="${level}"]`).classList.add('active');
     const vt = this._state.videoTrack;
     if (vt && vt.getCapabilities().zoom) {
-      vt.applyConstraints({ advanced: [{ zoom: level }] }).then(() => this._showToast(`${level}x 变焦`)).catch(() => {});
+      vt.applyConstraints({ advanced: [{ zoom: level }] })
+        .then(() => { this._state.cssZoom = 1; this._el.video.style.transform = ''; this._showToast(`${level}x 变焦`); })
+        .catch(() => this._applyCssZoom(level));
     } else {
-      this._el.video.style.transform = `scaleX(1) scale(${level})`;
+      this._applyCssZoom(level);
     }
+  }
+
+  /* 设备不支持硬件变焦时用 CSS 缩放，截图时按缩放后的可视区域取景 */
+  _applyCssZoom(level) {
+    this._state.cssZoom = level;
+    this._el.video.style.transform = level > 1 ? `scaleX(1) scale(${level})` : '';
+    this._showToast(`${level}x 变焦`);
   }
 
   _setMode(mode, el) {
@@ -554,67 +619,161 @@ class LensApp {
   }
 
   /* ====================== Capture & Preview ====================== */
-  _capture(e) {
+  async _capture(e) {
     if (e) e.preventDefault();
     if (!this._state.isCameraReady) { this._el.fileInput.click(); return; }
-    const flash = this._el.flash;
-    flash.classList.add('active'); setTimeout(() => flash.classList.remove('active'), 100);
-    const video = this._el.video;
+    if (this._capturing) return;   // 连点快门时只处理一次
+    this._capturing = true;
+    try {
+      const video = this._el.video;
+      // 相机元数据就绪 ≠ 已解码出画面：readyState < 2 时 drawImage 会抛 InvalidStateError
+      if (!video.videoWidth || !video.videoHeight) { this._showToast('相机尚未就绪，请稍候'); return; }
+      if (video.readyState < 2) {
+        this._showToast('相机画面准备中…');
+        await this._waitForVideoFrame(video, 2000);
+        if (video.readyState < 2 || !video.videoWidth) { this._showToast('相机画面未就绪，请重试'); return; }
+      }
+      const flash = this._el.flash;
+      flash.classList.add('active'); setTimeout(() => flash.classList.remove('active'), 100);
+      const raw = this._grabFrame(video);
+      if (!raw) { this._showToast('截图失败，请重试'); return; }
+      this._state.originalImage = raw;
+      this._state.currentImage = raw;
+      this._state.currentFilter = (this._state.currentMode === 'whiteboard' ? 'whiteboard' : (this._state.currentMode === 'document' ? 'document' : 'original'));
+      this._syncFilterButtons(this._state.currentFilter);
+      this._pushUndoState();
+      const rendered = this._showPreview();
+      if (this._state.currentMode === 'ocr') {
+        await rendered;
+        this._recognizeText();
+      }
+    } catch (err) {
+      console.error('截图失败:', err);
+      this._showToast('截图失败：' + (err && err.message ? err.message : err));
+    } finally {
+      this._capturing = false;
+    }
+  }
+
+  /* 等待视频流解码出至少一帧 */
+  _waitForVideoFrame(video, timeout) {
+    return new Promise(resolve => {
+      if (video.readyState >= 2) return resolve(true);
+      let settled = false;
+      const finish = ok => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => finish(false), timeout);
+      if (typeof video.requestVideoFrameCallback === 'function') {
+        video.requestVideoFrameCallback(() => finish(true));
+      }
+      video.addEventListener('loadeddata', () => finish(true), { once: true });
+      video.addEventListener('canplay', () => finish(true), { once: true });
+    });
+  }
+
+  /* 取景框 → 视频像素坐标：所见即所得（object-fit:cover + 数字变焦） */
+  _getCaptureRegion(video) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    const dw = video.clientWidth || window.innerWidth;
+    const dh = video.clientHeight || window.innerHeight;
+    const zoom = this._state.cssZoom || 1;
+    const cover = Math.max(dw / vw, dh / vh);
+    const scale = cover * zoom;
+    const visW = Math.min(vw, dw / scale);
+    const visH = Math.min(vh, dh / scale);
+    const offX = (vw - visW) / 2, offY = (vh - visH) / 2;
+    // 扫描模式取扫描框范围，照片/名片模式取整个可视区域
+    const framed = ['whiteboard', 'document', 'ocr'].includes(this._state.currentMode);
+    const f = framed ? { l: 0.1, t: 0.2, r: 0.9, b: 0.8 } : { l: 0, t: 0, r: 1, b: 1 };
+    let sx = offX + f.l * visW;
+    let sy = offY + f.t * visH;
+    let sw = (f.r - f.l) * visW;
+    let sh = (f.b - f.t) * visH;
+    sx = Math.max(0, Math.min(vw - 1, sx));
+    sy = Math.max(0, Math.min(vh - 1, sy));
+    sw = Math.max(1, Math.min(vw - sx, sw));
+    sh = Math.max(1, Math.min(vh - sy, sh));
+    return { sx, sy, sw, sh };
+  }
+
+  /* 从视频流抓取当前帧 */
+  _grabFrame(video) {
+    const region = this._getCaptureRegion(video);
     const canvas = this._el.processCanvas;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const crop = { left: 0.1, top: 0.2, right: 0.9, bottom: 0.8 };
-    const vw = video.videoWidth || 1920, vh = video.videoHeight || 1080;
-    const sw = vw * (crop.right - crop.left), sh = vh * (crop.bottom - crop.top);
-    canvas.width = sw; canvas.height = sh;
-    ctx.drawImage(video, vw * crop.left, vh * crop.top, sw, sh, 0, 0, sw, sh);
-    const raw = canvas.toDataURL('image/jpeg', 1.0);
-    this._state.originalImage = raw;
-    this._state.currentImage = raw;
-    this._state.currentFilter = (this._state.currentMode === 'whiteboard' ? 'whiteboard' : (this._state.currentMode === 'document' ? 'document' : 'original'));
-    this._pushUndoState();
-    this._showPreview();
-    if (this._state.currentMode === 'ocr') setTimeout(() => this._recognizeText(), 500);
+    if (!ctx) throw new Error('无法创建画布上下文');
+    const outW = Math.max(1, Math.round(region.sw));
+    const outH = Math.max(1, Math.round(region.sh));
+    canvas.width = outW; canvas.height = outH;
+    ctx.drawImage(video, region.sx, region.sy, region.sw, region.sh, 0, 0, outW, outH);
+    return canvas.toDataURL('image/jpeg', 1.0);
+  }
+
+  _syncFilterButtons(filter) {
+    document.querySelectorAll('[data-cmd="applyFilter"]').forEach(b => {
+      b.classList.toggle('active', b.dataset.filter === filter);
+    });
   }
 
   _showPreview() {
     this._el.previewContainer.classList.add('active');
     this._resetCropCorners();
     if (this._state.isAutoCorrect) this._initCorrectCorners();
-    this._renderPreview();
+    return this._renderPreview();
   }
 
+  /* 渲染预览：返回 Promise，完成后 currentImage 为最终图 */
   _renderPreview() {
     const s = this._state;
-    if (!s.originalImage) return;
-    const canvas = this._el.previewCanvas;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const img = new Image();
-    img.onload = () => {
-      let src = img;
-      if (s.isAutoCorrect && s.correctCorners.length === 4) {
-        const sw = img.width, sh = img.height;
-        const corners = s.correctCorners;
-        const srcPts = corners.map(p => ({ x: p.x * sw, y: p.y * sh }));
-        const dstPts = [{x:0,y:0},{x:sw,y:0},{x:sw,y:sh},{x:0,y:sh}];
-        const H = this._computeHomography(srcPts, dstPts);
-        const wc = document.createElement('canvas');
-        this._warpImage(img, wc, H, sw, sh);
-        src = wc;
-      }
-      canvas.width = src.width; canvas.height = src.height;
-      ctx.drawImage(src, 0, 0);
-      if (s.currentFilter !== 'original' && s.currentFilter !== 'photo') {
-        const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        this._processFilterData(id.data, canvas.width, canvas.height, s.currentFilter);
-        ctx.putImageData(id, 0, 0);
-      }
-      s.currentImage = canvas.toDataURL('image/jpeg', 0.95);
-    };
-    img.src = s.originalImage;
+    if (!s.originalImage) return Promise.resolve(null);
+    const token = ++this._renderToken;
+    return new Promise(resolve => {
+      const canvas = this._el.previewCanvas;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const img = new Image();
+      img.onload = () => {
+        if (token !== this._renderToken) return resolve(null);
+        try {
+          if (!img.width || !img.height) throw new Error('图片尺寸无效');
+          let src = img;
+          if (s.isAutoCorrect && s.correctCorners.length === 4 && !this._isFullQuad(s.correctCorners)) {
+            const warped = this._warpPerspective(img, s.correctCorners);
+            if (warped) src = warped;
+          }
+          canvas.width = src.width; canvas.height = src.height;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(src, 0, 0);
+          if (s.currentFilter !== 'original' && s.currentFilter !== 'photo') {
+            const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            this._processFilterData(id.data, canvas.width, canvas.height, s.currentFilter);
+            ctx.putImageData(id, 0, 0);
+          }
+          s.currentImage = canvas.toDataURL('image/jpeg', 0.95);
+          this._renderCorrectHandles();
+          resolve(s.currentImage);
+        } catch (err) {
+          console.error('预览渲染失败:', err);
+          this._showToast('图像处理失败：' + (err && err.message ? err.message : err));
+          resolve(null);
+        }
+      };
+      img.onerror = () => {
+        console.error('图片解码失败');
+        this._showToast('图片解码失败');
+        resolve(null);
+      };
+      img.src = s.originalImage;
+    });
   }
 
   _closePreview(clearQueue) {
     this._el.previewContainer.classList.remove('active');
+    this._renderToken++; // 作废尚未完成的渲染
+    if (this._correctionRaf) { cancelAnimationFrame(this._correctionRaf); this._correctionRaf = 0; }
     this._state.isCropping = false;
     this._state.correctMode = false;
     this._el.cropFrame.classList.remove('active');
@@ -630,46 +789,62 @@ class LensApp {
     }
   }
 
-  _confirmAdd() {
-    if (!this._state.currentImage) { this._showToast('没有可保存的图片'); return; }
-    const canvas = this._el.previewCanvas;
-    const finalImage = canvas.toDataURL('image/jpeg', 0.95);
+  async _confirmAdd() {
+    const s = this._state;
+    if (!s.currentImage) { this._showToast('图片处理中，请稍候…'); return; }
+    const finalImage = s.currentImage;
     const now = Date.now();
-    const name = `camera_${now}.jpg`;
+    const seq = ++this._imgSeq;
+    const d = new Date(now);
+    const pad = n => String(n).padStart(2, '0');
+    const name = `camera_${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}${pad(seq)}.jpg`;
     const imgObj = {
-      id: now, data: finalImage, filter: this._state.currentFilter,
+      id: `${now}_${seq}`, data: finalImage, filter: s.currentFilter,
       timestamp: new Date().toLocaleString(), fileName: name, displayName: name, ocrText: '', ocrJson: '', ocrMarkdown: ''
     };
-    this._state.capturedImages.push(imgObj);
-    this._saveToDB(imgObj);
+    s.capturedImages.push(imgObj);
     this._updateGalleryCount();
     this._closePreview();
-    this._showToast(`已添加，共 ${this._state.capturedImages.length} 张`);
+    this._showToast(`已添加，共 ${s.capturedImages.length} 张`);
+    await this._saveToDB(imgObj);
   }
 
   /* ====================== Undo ====================== */
   _pushUndoState() {
-    if (this._state.currentImage) {
-      this._state.undoStack.push(this._state.currentImage);
-      if (this._state.undoStack.length > this._state.undoMax) this._state.undoStack.shift();
-      this._el.undoBtn.textContent = `↩ ${this._state.undoStack.length}`;
+    const s = this._state;
+    if (s.currentImage) {
+      s.undoStack.push({
+        data: s.currentImage,
+        filter: s.currentFilter,
+        corners: s.correctCorners.map(c => ({ x: c.x, y: c.y, label: c.label }))
+      });
+      if (s.undoStack.length > s.undoMax) s.undoStack.shift();
+      this._el.undoBtn.textContent = `↩ ${s.undoStack.length}`;
     }
   }
 
   _undo() {
-    if (!this._state.undoStack.length) { this._showToast('没有可撤销的操作'); return; }
-    this._state.currentImage = this._state.undoStack.pop();
-    this._el.undoBtn.textContent = this._state.undoStack.length ? `↩ ${this._state.undoStack.length}` : '↩';
+    const s = this._state;
+    if (!s.undoStack.length) { this._showToast('没有可撤销的操作'); return; }
+    const snap = s.undoStack.pop();
+    s.currentImage = snap.data;
+    if (snap.filter) s.currentFilter = snap.filter;
+    if (snap.corners && snap.corners.length === 4) {
+      s.correctCorners = snap.corners.map(c => ({ x: c.x, y: c.y, label: c.label }));
+      s.correctMode = true;
+    }
+    this._el.undoBtn.textContent = s.undoStack.length ? `↩ ${s.undoStack.length}` : '↩';
+    this._syncFilterButtons(s.currentFilter);
     const canvas = this._el.previewCanvas;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const img = new Image();
     img.onload = () => {
       canvas.width = img.width; canvas.height = img.height;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
-      if (this._state.isAutoCorrect) this._initCorrectCorners();
-      this._resetCropCorners();
+      this._renderCorrectHandles();
     };
-    img.src = this._state.currentImage;
+    img.src = s.currentImage;
     this._showToast('已撤销');
   }
 
@@ -900,21 +1075,20 @@ class LensApp {
   /* ====================== Auto Correct (Perspective) ====================== */
   _toggleAutoCorrect() {
     const s = this._state;
+    this._pushUndoState();
     s.isAutoCorrect = !s.isAutoCorrect;
     this._el.correctToggle.textContent = s.isAutoCorrect ? '开' : '关';
     this._el.correctToggle.classList.toggle('active');
     if (s.isAutoCorrect && s.originalImage) this._initCorrectCorners();
     else this._removeCorrectHandles();
-    this._pushUndoState();
     this._renderPreview();
   }
 
   _initCorrectCorners() {
-    const canvas = this._el.previewCanvas;
-    const wrap = this._el.previewCanvasWrap;
     this._removeCorrectHandles();
     const s = this._state;
-    const margin = 0.08;
+    // 默认贴合整张已截取区域（不再额外裁掉 8%），用户可拖角调整
+    const margin = 0;
     s.correctCorners = [
       { x: margin, y: margin, label: 'TL' },
       { x: 1 - margin, y: margin, label: 'TR' },
@@ -930,24 +1104,29 @@ class LensApp {
   }
 
   _renderCorrectHandles() {
-    this._removeCorrectHandles();
     const wrap = this._el.previewCanvasWrap;
     const canvas = this._el.previewCanvas;
     const s = this._state;
-    if (!s.correctMode || !s.correctCorners.length) return;
+    if (!s.correctMode || !s.correctCorners.length) { this._removeCorrectHandles(); return; }
     const rect = canvas.getBoundingClientRect();
     const wRect = wrap.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const handles = Array.from(wrap.querySelectorAll('.correct-handle'));
     s.correctCorners.forEach((pt, i) => {
-      const h = document.createElement('div');
-      h.className = 'correct-handle';
-      h.dataset.correctIdx = i;
+      let h = handles[i];
+      if (!h) {
+        h = document.createElement('div');
+        h.className = 'correct-handle';
+        h.dataset.correctIdx = i;
+        h.addEventListener('mousedown', this._onCorrectDragStart.bind(this));
+        h.addEventListener('touchstart', this._onCorrectDragStart.bind(this), { passive: false });
+        wrap.appendChild(h);
+      }
       h.dataset.label = pt.label;
       h.style.left = (rect.left - wRect.left + pt.x * rect.width) + 'px';
       h.style.top = (rect.top - wRect.top + pt.y * rect.height) + 'px';
-      h.addEventListener('mousedown', this._onCorrectDragStart.bind(this));
-      h.addEventListener('touchstart', this._onCorrectDragStart.bind(this), { passive: false });
-      wrap.appendChild(h);
     });
+    for (let i = s.correctCorners.length; i < handles.length; i++) handles[i].remove();
   }
 
   _onCorrectDragStart(e) {
@@ -968,18 +1147,27 @@ class LensApp {
     if (this._state.activeCorrectHandle === null) return;
     e.preventDefault();
     const canvas = this._el.previewCanvas;
-    const wrap = this._el.previewCanvasWrap;
     const rect = canvas.getBoundingClientRect();
-    const wRect = wrap.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
     const cx = e.touches ? e.touches[0].clientX : e.clientX;
     const cy = e.touches ? e.touches[0].clientY : e.clientY;
-    const x = Math.max(0.02, Math.min(0.98, (cx - rect.left) / rect.width));
-    const y = Math.max(0.02, Math.min(0.98, (cy - rect.top) / rect.height));
+    const x = (cx - rect.left) / rect.width;
+    const y = (cy - rect.top) / rect.height;
+    if (!isFinite(x) || !isFinite(y)) return;
     const idx = this._state.activeCorrectHandle;
-    this._state.correctCorners[idx].x = x;
-    this._state.correctCorners[idx].y = y;
+    this._state.correctCorners[idx].x = Math.max(0, Math.min(1, x));
+    this._state.correctCorners[idx].y = Math.max(0, Math.min(1, y));
     this._renderCorrectHandles();
-    this._applyCorrectionPreview();
+    this._scheduleCorrectionPreview();
+  }
+
+  /* 拖动时按帧节流，避免每像素重算整幅透视变换 */
+  _scheduleCorrectionPreview() {
+    if (this._correctionRaf) return;
+    this._correctionRaf = requestAnimationFrame(() => {
+      this._correctionRaf = 0;
+      this._applyCorrectionPreview();
+    });
   }
 
   _onCorrectDragEnd() {
@@ -994,36 +1182,88 @@ class LensApp {
   _applyCorrectionPreview() {
     const s = this._state;
     if (!s.originalImage) return;
+    const token = ++this._renderToken;
     const canvas = this._el.previewCanvas;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const img = new Image();
     img.onload = () => {
-      const sw = img.width, sh = img.height;
-      const corners = s.correctCorners;
-      const srcPts = corners.map(p => ({ x: p.x * sw, y: p.y * sh }));
-      const dstPts = [{x:0,y:0},{x:sw,y:0},{x:sw,y:sh},{x:0,y:sh}];
-      const H = this._computeHomography(srcPts, dstPts);
-      this._warpImage(img, canvas, H, sw, sh);
-      if (s.currentFilter !== 'original' && s.currentFilter !== 'photo') {
-        const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        this._processFilterData(id.data, canvas.width, canvas.height, s.currentFilter);
-        ctx.putImageData(id, 0, 0);
-      }
+      if (token !== this._renderToken) return;
+      try {
+        if (!img.width || !img.height) return;
+        // 拖动过程中固定画布尺寸（源图尺寸），避免画布每帧改变导致手柄跳动
+        const src = this._warpPerspective(img, s.correctCorners, { w: img.width, h: img.height }) || img;
+        canvas.width = src.width; canvas.height = src.height;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(src, 0, 0);
+        if (s.currentFilter !== 'original' && s.currentFilter !== 'photo') {
+          const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          this._processFilterData(id.data, canvas.width, canvas.height, s.currentFilter);
+          ctx.putImageData(id, 0, 0);
+        }
+        s.currentImage = canvas.toDataURL('image/jpeg', 0.95);
+        this._renderCorrectHandles();
+      } catch (err) { console.error('透视校正失败:', err); }
     };
+    img.onerror = () => console.error('图片解码失败');
     img.src = s.originalImage;
   }
 
+  /* 四角即整幅图像时无需做透视重采样（省掉一次百万像素级循环） */
+  _isFullQuad(corners) {
+    const ref = [[0, 0], [1, 0], [1, 1], [0, 1]];
+    for (let i = 0; i < 4; i++) {
+      if (Math.abs(corners[i].x - ref[i][0]) > 1e-4 || Math.abs(corners[i].y - ref[i][1]) > 1e-4) return false;
+    }
+    return true;
+  }
+
+  /* 透视变换：按四角计算单应矩阵并输出矫正后的画布，失败返回 null
+     size 为空时按四边长度推算输出尺寸；传入时使用固定尺寸 */
+  _warpPerspective(img, corners, size) {
+    if (!corners || corners.length !== 4) return null;
+    const sw = img.width, sh = img.height;
+    if (!sw || !sh) return null;
+    const srcPts = corners.map(p => ({ x: p.x * sw, y: p.y * sh }));
+    let dw, dh;
+    if (size) {
+      dw = size.w; dh = size.h;
+    } else {
+      // 输出尺寸按四边实际长度计算，保留原始比例（避免被拉伸变形）
+      const wTop = Math.hypot(srcPts[1].x - srcPts[0].x, srcPts[1].y - srcPts[0].y);
+      const wBot = Math.hypot(srcPts[2].x - srcPts[3].x, srcPts[2].y - srcPts[3].y);
+      const hLeft = Math.hypot(srcPts[3].x - srcPts[0].x, srcPts[3].y - srcPts[0].y);
+      const hRight = Math.hypot(srcPts[2].x - srcPts[1].x, srcPts[2].y - srcPts[1].y);
+      dw = Math.round(Math.max(wTop, wBot));
+      dh = Math.round(Math.max(hLeft, hRight));
+      dw = Math.max(16, Math.min(4000, dw));
+      dh = Math.max(16, Math.min(4000, dh));
+    }
+    const dstPts = [{x:0,y:0},{x:dw,y:0},{x:dw,y:dh},{x:0,y:dh}];
+    const H = this._computeHomography(srcPts, dstPts);
+    if (!H) return null;
+    const wc = document.createElement('canvas');
+    this._warpImage(img, wc, H, dw, dh);
+    return wc;
+  }
+
   _computeHomography(src, dst) {
+    if (!src || !dst || src.length < 4 || dst.length < 4) return null;
     const A = [], B = [];
     for (let i = 0; i < 4; i++) {
       const sx = src[i].x, sy = src[i].y, dx = dst[i].x, dy = dst[i].y;
+      if (!isFinite(sx) || !isFinite(sy) || !isFinite(dx) || !isFinite(dy)) return null;
       A.push([sx, sy, 1, 0, 0, 0, -sx*dx, -sy*dx]);
       B.push(dx);
       A.push([0, 0, 0, sx, sy, 1, -sx*dy, -sy*dy]);
       B.push(dy);
     }
     const h = this._solveLinear8(A, B);
-    return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+    if (!h || h.some(v => !isFinite(v))) return null;
+    const H = [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+    // 四点共线/重合时矩阵奇异，判定为无效
+    const det = H[0]*(H[4]*H[8]-H[5]*H[7]) - H[1]*(H[3]*H[8]-H[5]*H[6]) + H[2]*(H[3]*H[7]-H[4]*H[6]);
+    if (!isFinite(det) || Math.abs(det) < 1e-12) return null;
+    return H;
   }
 
   _solveLinear8(A, B) {
@@ -1033,7 +1273,7 @@ class LensApp {
       for (let j = i + 1; j < n; j++) if (Math.abs(A[j][i]) > Math.abs(A[maxRow][i])) maxRow = j;
       [A[i], A[maxRow]] = [A[maxRow], A[i]]; [B[i], B[maxRow]] = [B[maxRow], B[i]];
       const piv = A[i][i];
-      if (Math.abs(piv) < 1e-12) continue;
+      if (Math.abs(piv) < 1e-12) return null; // 奇异矩阵，无法求解
       for (let j = i; j < n; j++) A[i][j] /= piv;
       B[i] /= piv;
       for (let j = 0; j < n; j++) {
@@ -1047,32 +1287,43 @@ class LensApp {
   }
 
   _warpImage(srcImg, dstCanvas, H, dstW, dstH) {
+    dstW = Math.max(1, Math.round(dstW));
+    dstH = Math.max(1, Math.round(dstH));
     dstCanvas.width = dstW; dstCanvas.height = dstH;
     const ctx = dstCanvas.getContext('2d', { willReadFrequently: true });
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, dstW, dstH);
     const srcC = document.createElement('canvas');
     srcC.width = srcImg.width; srcC.height = srcImg.height;
     const srcCtx = srcC.getContext('2d', { willReadFrequently: true });
     srcCtx.drawImage(srcImg, 0, 0);
     const srcData = srcCtx.getImageData(0, 0, srcImg.width, srcImg.height);
     const sW = srcImg.width, sH = srcImg.height;
+    const src = srcData.data;
     const dstData = ctx.createImageData(dstW, dstH);
     const d = dstData.data;
+    // 预填白色不透明，避免采样落空处被 JPEG 编成黑边
+    for (let i = 0; i < d.length; i += 4) { d[i] = 255; d[i+1] = 255; d[i+2] = 255; d[i+3] = 255; }
     const hInv = this._invHomography(H);
+    if (!hInv) { ctx.putImageData(dstData, 0, 0); return; }
+    const maxIx = Math.max(0, sW - 2), maxIy = Math.max(0, sH - 2);
     for (let y = 0; y < dstH; y++) {
+      const dy = y + 0.5;
       for (let x = 0; x < dstW; x++) {
-        const denom = hInv[6]*x + hInv[7]*y + hInv[8];
-        const sx = (hInv[0]*x + hInv[1]*y + hInv[2]) / denom;
-        const sy = (hInv[3]*x + hInv[4]*y + hInv[5]) / denom;
-        if (sx < 0 || sx >= sW - 1 || sy < 0 || sy >= sH - 1) continue;
-        const ix = Math.floor(sx), iy = Math.floor(sy);
-        const fx = sx - ix, fy = sy - iy;
+        const dx = x + 0.5;
+        const denom = hInv[6]*dx + hInv[7]*dy + hInv[8];
+        if (!isFinite(denom) || Math.abs(denom) < 1e-12) continue;
+        // 像素中心坐标：目标 (x+0.5,y+0.5) → 源 (u,v)，再转成源像素索引
+        const u = (hInv[0]*dx + hInv[1]*dy + hInv[2]) / denom - 0.5;
+        const v = (hInv[3]*dx + hInv[4]*dy + hInv[5]) / denom - 0.5;
+        if (!isFinite(u) || !isFinite(v)) continue;
+        if (u < 0 || u > sW - 1 || v < 0 || v > sH - 1) continue;
+        const ix = Math.max(0, Math.min(Math.floor(u), maxIx));
+        const iy = Math.max(0, Math.min(Math.floor(v), maxIy));
+        const fx = u - ix, fy = v - iy;
         const idx = (y * dstW + x) * 4;
         for (let c = 0; c < 3; c++) {
           const p = (iy * sW + ix) * 4 + c;
-          const v00 = srcData.data[p], v10 = srcData.data[p + 4];
-          const v01 = srcData.data[p + sW*4], v11 = srcData.data[p + sW*4 + 4];
+          const v00 = src[p], v10 = src[p + 4];
+          const v01 = src[p + sW*4], v11 = src[p + sW*4 + 4];
           d[idx + c] = (v00*(1-fx)*(1-fy) + v10*fx*(1-fy) + v01*(1-fx)*fy + v11*fx*fy) | 0;
         }
         d[idx + 3] = 255;
@@ -1082,9 +1333,10 @@ class LensApp {
   }
 
   _invHomography(H) {
+    if (!H) return null;
     const [a,b,c,d,e,f,g,h,ih] = H;
     const det = a*(e*ih-f*h) - b*(d*ih-f*g) + c*(d*h-e*g);
-    if (Math.abs(det) < 1e-12) return [1,0,0,0,1,0,0,0,1];
+    if (!isFinite(det) || Math.abs(det) < 1e-12) return null;
     const id = 1 / det;
     return [
       (e*ih-f*h)*id, (c*h-b*ih)*id, (b*f-c*e)*id,
@@ -1653,8 +1905,8 @@ class LensApp {
     s.isOCRProcessing = true;
     this._showProcessing('调用 OCR 引擎识别中...');
     try {
-      const canvas = this._el.previewCanvas;
-      const r = await this._callOCR(canvas.toDataURL('image/jpeg', 0.92));
+      const src = s.currentImage || this._el.previewCanvas.toDataURL('image/jpeg', 0.92);
+      const r = await this._callOCR(src);
       s.ocrBatchResults = [{ id: 0, fileName: '预览图', ...r }];
       s.ocrBatchIndex = 0;
       this._openOCRModal();
