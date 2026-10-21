@@ -795,6 +795,12 @@ class LensApp {
 
   async _confirmAdd() {
     const s = this._state;
+    if (s.isCropping) {
+      // 裁剪模式未退出时直接确认：先应用裁剪再保存，避免裁剪被丢弃
+      s.isCropping = false;
+      this._el.cropFrame.classList.remove('active');
+      await this._applyCrop(true);
+    }
     if (!s.currentImage) { this._showToast('图片处理中，请稍候…'); return; }
     const finalImage = s.currentImage;
     const now = Date.now();
@@ -1409,11 +1415,13 @@ class LensApp {
     const frame = this._el.cropFrame;
     const rect = canvas.getBoundingClientRect();
     const wRect = wrap.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
     const cc = this._state.cropCorners;
+    // 裁剪区 = tl → br（与 _applyCrop 取值一致，绿框与实际裁剪永远相同）
     const left = rect.left - wRect.left + cc.tl.x * rect.width;
     const top = rect.top - wRect.top + cc.tl.y * rect.height;
-    const w = (cc.tr.x - cc.tl.x) * rect.width;
-    const h = (cc.bl.y - cc.tl.y) * rect.height;
+    const w = (cc.br.x - cc.tl.x) * rect.width;
+    const h = (cc.br.y - cc.tl.y) * rect.height;
     frame.style.left = left + 'px';
     frame.style.top = top + 'px';
     frame.style.width = w + 'px';
@@ -1448,48 +1456,79 @@ class LensApp {
     e.preventDefault();
     const canvas = this._el.previewCanvas;
     const rect = canvas.getBoundingClientRect();
-    let x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    let y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+    if (!rect.width || !rect.height) return;
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    if (!isFinite(x) || !isFinite(y)) return;
     const cc = this._state.cropCorners;
+    const MIN = 0.02;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    // 裁剪区是轴对齐矩形：tl/br 定义边界，tr/bl 由边界派生
+    // 每个角点拖动时同时影响它所夹的两条边，保证绿框 = 实际裁剪区
     switch (this._state.activeHandle) {
-      case 'tl': cc.tl.x = Math.min(x, cc.tr.x - 0.05); cc.tl.y = Math.min(y, cc.bl.y - 0.05); break;
-      case 'tr': cc.tr.x = Math.max(x, cc.tl.x + 0.05); cc.tr.y = Math.min(y, cc.br.y - 0.05); break;
-      case 'bl': cc.bl.x = Math.min(x, cc.br.x - 0.05); cc.bl.y = Math.max(y, cc.tl.y + 0.05); break;
-      case 'br': cc.br.x = Math.max(x, cc.bl.x + 0.05); cc.br.y = Math.max(y, cc.tr.y + 0.05); break;
+      case 'tl':
+        cc.tl.x = clamp(x, 0, cc.br.x - MIN);
+        cc.tl.y = clamp(y, 0, cc.br.y - MIN);
+        break;
+      case 'tr':
+        cc.br.x = clamp(x, cc.tl.x + MIN, 1);
+        cc.tl.y = clamp(y, 0, cc.br.y - MIN);
+        break;
+      case 'bl':
+        cc.tl.x = clamp(x, 0, cc.br.x - MIN);
+        cc.br.y = clamp(y, cc.tl.y + MIN, 1);
+        break;
+      case 'br':
+        cc.br.x = clamp(x, cc.tl.x + MIN, 1);
+        cc.br.y = clamp(y, cc.tl.y + MIN, 1);
+        break;
     }
+    // 同步派生角点
+    cc.tr.x = cc.br.x; cc.tr.y = cc.tl.y;
+    cc.bl.x = cc.tl.x; cc.bl.y = cc.br.y;
     this._updateCropFrame();
   }
 
-  _applyCrop() {
-    if (!this._state.originalImage) { this._showCorrectHandles(); return; }
-    this._pushUndoState();
-    const img = new Image();
-    img.onload = () => {
-      const s = this._state;
-      const cc = s.cropCorners;
-      // 裁剪基准 = 用户看到的几何（透视校正后、不含滤镜），否则校正后裁剪会切错区域
-      let base = img;
-      if (s.isAutoCorrect && s.correctCorners.length === 4 && !this._isFullQuad(s.correctCorners)) {
-        const warped = this._warpPerspective(img, s.correctCorners);
-        if (warped) base = warped;
-      }
-      const w = base.width, h = base.height;
-      const x1 = Math.floor(cc.tl.x * w), y1 = Math.floor(cc.tl.y * h);
-      const x2 = Math.floor(cc.br.x * w), y2 = Math.floor(cc.br.y * h);
-      const cw = Math.max(1, x2 - x1), ch = Math.max(1, y2 - y1);
-      if (cw >= w && ch >= h) { this._showToast('未选择裁剪区域'); this._showCorrectHandles(); return; }
-      const c = document.createElement('canvas');
-      const ctx = c.getContext('2d', { willReadFrequently: true });
-      c.width = cw; c.height = ch;
-      ctx.drawImage(base, x1, y1, cw, ch, 0, 0, cw, ch);
-      s.originalImage = c.toDataURL('image/jpeg', 1.0);
-      this._resetCropCorners();
-      if (s.isAutoCorrect) this._initCorrectCorners();
-      else this._removeCorrectHandles();
-      this._renderPreview();
-      this._showToast('已裁剪');
-    };
-    img.src = this._state.originalImage;
+  /* 应用裁剪；返回 Promise，silent=true 时不弹"未选择裁剪区域"提示 */
+  _applyCrop(silent) {
+    return new Promise(resolve => {
+      if (!this._state.originalImage) { this._showCorrectHandles(); resolve(false); return; }
+      this._pushUndoState();
+      const img = new Image();
+      img.onload = async () => {
+        const s = this._state;
+        const cc = s.cropCorners;
+        // 裁剪基准 = 用户看到的几何（透视校正后、不含滤镜），否则校正后裁剪会切错区域
+        let base = img;
+        if (s.isAutoCorrect && s.correctCorners.length === 4 && !this._isFullQuad(s.correctCorners)) {
+          const warped = this._warpPerspective(img, s.correctCorners);
+          if (warped) base = warped;
+        }
+        const w = base.width, h = base.height;
+        const x1 = Math.floor(cc.tl.x * w), y1 = Math.floor(cc.tl.y * h);
+        const x2 = Math.floor(cc.br.x * w), y2 = Math.floor(cc.br.y * h);
+        const cw = Math.max(1, x2 - x1), ch = Math.max(1, y2 - y1);
+        if (cw >= w && ch >= h) {
+          if (!silent) this._showToast('未选择裁剪区域');
+          this._showCorrectHandles();
+          resolve(false);
+          return;
+        }
+        const c = document.createElement('canvas');
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        c.width = cw; c.height = ch;
+        ctx.drawImage(base, x1, y1, cw, ch, 0, 0, cw, ch);
+        s.originalImage = c.toDataURL('image/jpeg', 1.0);
+        this._resetCropCorners();
+        if (s.isAutoCorrect) this._initCorrectCorners();
+        else this._removeCorrectHandles();
+        await this._renderPreview();
+        if (!silent) this._showToast('已裁剪');
+        resolve(true);
+      };
+      img.onerror = () => { this._showCorrectHandles(); resolve(false); };
+      img.src = this._state.originalImage;
+    });
   }
 
   /* ====================== Gallery ====================== */
